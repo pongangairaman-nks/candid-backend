@@ -35,7 +35,7 @@ router.get('/config', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     
     const result = await pool.query(
-      'SELECT analyzer_provider, analyzer_model, generator_provider, generator_model, is_active FROM llm_configs WHERE user_id = $1',
+      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, is_active FROM llm_configs WHERE user_id = $1',
       [userId]
     );
 
@@ -44,8 +44,10 @@ router.get('/config', authenticateToken, async (req, res) => {
       return res.json({
         analyzer_provider: 'gemini',
         analyzer_model: 'gemini-2.5-flash',
+        analyzer_api_key: null,
         generator_provider: 'claude',
         generator_model: 'claude-opus-4-1-20250805',
+        generator_api_key: null,
         is_active: true,
       });
     }
@@ -106,7 +108,7 @@ router.post('/config', authenticateToken, async (req, res) => {
              generator_provider = $4, generator_model = $5, generator_api_key = $6,
              updated_at = CURRENT_TIMESTAMP 
          WHERE user_id = $7 
-         RETURNING analyzer_provider, analyzer_model, generator_provider, generator_model, is_active`,
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, is_active`,
         [
           analyzer_provider,
           analyzer_model,
@@ -123,7 +125,7 @@ router.post('/config', authenticateToken, async (req, res) => {
         `INSERT INTO llm_configs 
          (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key) 
          VALUES ($1, $2, $3, $4, $5, $6, $7) 
-         RETURNING analyzer_provider, analyzer_model, generator_provider, generator_model, is_active`,
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, is_active`,
         [
           userId,
           analyzer_provider,
