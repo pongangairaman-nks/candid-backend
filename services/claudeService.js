@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -8,8 +9,11 @@ const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY,
 });
 
+// Initialize Gemini as fallback
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 /**
- * Generate tailored resume using Claude while preserving LaTeX template structure
+ * Generate tailored resume using Claude (with Gemini fallback) while preserving LaTeX template structure
  * @param {string} originalLatex - The original LaTeX template
  * @param {Object} analysis - Gemini analysis results (keywords, missing_skills, role_focus)
  * @param {string} masterResumeText - Master resume text content
@@ -23,10 +27,25 @@ export const tailorResumeContent = async (
     jobDescription
 ) => {
     try {
-        console.log('🤖 Calling Claude API for resume tailoring...');
+        // Try Claude first
+        console.log('🤖 Attempting to call Claude API for resume tailoring...');
+        return await tailorWithClaude(originalLatex, analysis, masterResumeText, jobDescription);
+    } catch (claudeError) {
+        console.warn('⚠️  Claude API failed, falling back to Gemini:', claudeError.message);
+        try {
+            return await tailorWithGemini(originalLatex, analysis, masterResumeText, jobDescription);
+        } catch (geminiError) {
+            console.error('❌ Both Claude and Gemini failed');
+            throw new Error(`Failed to tailor resume: Claude - ${claudeError.message}, Gemini - ${geminiError.message}`);
+        }
+    }
+};
 
-        // Construct the prompt with CRITICAL instructions
-        const systemPrompt = `You are an expert resume content editor specializing in LaTeX documents. Your ONLY job is to update the written content inside a LaTeX resume template to better match a job description.
+/**
+ * Tailor resume using Claude
+ */
+const tailorWithClaude = async (originalLatex, analysis, masterResumeText, jobDescription) => {
+    const systemPrompt = `You are an expert resume content editor specializing in LaTeX documents. Your ONLY job is to update the written content inside a LaTeX resume template to better match a job description.
 
 CRITICAL RULES:
 1. You MUST preserve the ENTIRE LaTeX structure, commands, packages, and formatting
@@ -40,7 +59,7 @@ CRITICAL RULES:
 
 You are a CONTENT EDITOR, not a TEMPLATE DESIGNER.`;
 
-        const userPrompt = `I need you to update the content of this LaTeX resume to better match the job description below.
+    const userPrompt = `I need you to update the content of this LaTeX resume to better match the job description below.
 
 JOB DESCRIPTION:
 ${jobDescription}
@@ -71,43 +90,86 @@ INSTRUCTIONS:
 
 Return ONLY the updated LaTeX document. No explanations, no markdown, no code blocks - just the raw LaTeX content.`;
 
-        const message = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 8000,
-            temperature: 0.3, // Lower temperature for more consistent output
-            system: systemPrompt,
-            messages: [
-                {
-                    role: 'user',
-                    content: userPrompt,
-                },
-            ],
-        });
+    const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        temperature: 0.3,
+        system: systemPrompt,
+        messages: [
+            {
+                role: 'user',
+                content: userPrompt,
+            },
+        ],
+    });
 
-        // Extract the tailored LaTeX content
-        const tailoredLatex = message.content[0].text;
+    const tailoredLatex = message.content[0].text;
 
-        // Basic validation to ensure it's still LaTeX
-        if (!tailoredLatex.includes('\\documentclass') && !tailoredLatex.includes('\\begin{document}')) {
-            console.warn('⚠️  Warning: Response may not be valid LaTeX');
-            // Try to extract LaTeX if Claude wrapped it in code blocks
-            const latexMatch = tailoredLatex.match(/```(?:latex)?\n?([\s\S]*?)\n?```/);
-            if (latexMatch) {
-                console.log('📝 Extracted LaTeX from code block');
-                return latexMatch[1];
-            }
+    if (!tailoredLatex.includes('\\documentclass') && !tailoredLatex.includes('\\begin{document}')) {
+        console.warn('⚠️  Warning: Response may not be valid LaTeX');
+        const latexMatch = tailoredLatex.match(/```(?:latex)?\n?([\s\S]*?)\n?```/);
+        if (latexMatch) {
+            console.log('📝 Extracted LaTeX from code block');
+            return latexMatch[1];
         }
-
-        console.log('✅ Claude tailoring complete');
-        console.log(`  Original length: ${originalLatex.length} chars`);
-        console.log(`  Tailored length: ${tailoredLatex.length} chars`);
-
-        return tailoredLatex;
-
-    } catch (error) {
-        console.error('❌ Claude API error:', error.message);
-        throw new Error(`Failed to tailor resume: ${error.message}`);
     }
+
+    console.log('✅ Claude tailoring complete');
+    return tailoredLatex;
+};
+
+/**
+ * Tailor resume using Gemini (fallback)
+ */
+const tailorWithGemini = async (originalLatex, analysis, masterResumeText, jobDescription) => {
+    console.log('🤖 Using Gemini for resume tailoring...');
+    
+    const generateContent = ai.models.generateContent;
+    
+    const prompt = `You are an expert resume content editor specializing in LaTeX documents. Your ONLY job is to update the written content inside a LaTeX resume template to better match a job description.
+
+CRITICAL RULES:
+1. You MUST preserve the ENTIRE LaTeX structure, commands, packages, and formatting
+2. You MUST NOT add, remove, or modify any LaTeX commands
+3. You MUST NOT change spacing, margins, or layout commands
+4. You MUST NOT add or remove sections
+5. You MUST ONLY update the actual text content (job titles, descriptions, skills, achievements)
+6. Return ONLY the complete LaTeX document with updated content
+7. Do NOT include any explanations, markdown formatting, or code blocks
+
+JOB DESCRIPTION:
+${jobDescription}
+
+ROLE FOCUS:
+${analysis.role_focus}
+
+KEY KEYWORDS TO EMPHASIZE:
+${analysis.keywords.join(', ')}
+
+ORIGINAL LaTeX TEMPLATE:
+${originalLatex}
+
+Update the resume content to emphasize these keywords and align with the role focus. Preserve all LaTeX structure. Return ONLY the updated LaTeX document.`;
+
+    const result = await generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+    });
+
+    let text;
+    if (typeof result.text === 'function') {
+        text = result.text();
+    } else if (result.text) {
+        text = result.text;
+    } else if (result.candidates && result.candidates[0]) {
+        text = result.candidates[0].content.parts[0].text;
+    } else {
+        throw new Error('Unable to extract text from Gemini response');
+    }
+
+    const cleanedText = text.replace(/```latex\n?/g, '').replace(/```\n?/g, '').trim();
+    console.log('✅ Gemini tailoring complete');
+    return cleanedText;
 };
 
 /**
