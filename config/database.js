@@ -30,10 +30,34 @@ export const testConnection = async () => {
 export const initDatabase = async () => {
   const client = await pool.connect();
   try {
+    // Users table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        is_verified BOOLEAN DEFAULT FALSE,
+        verification_token VARCHAR(255),
+        verification_token_expires TIMESTAMP,
+        reset_token VARCHAR(255),
+        reset_token_expires TIMESTAMP,
+        last_login TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Create index on email for faster lookups
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    `);
+    
     await client.query(`
       CREATE TABLE IF NOT EXISTS resumes (
         id SERIAL PRIMARY KEY,
-        user_id VARCHAR(255),
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         original_latex TEXT,
         master_resume_text TEXT,
         job_description TEXT,
@@ -48,7 +72,7 @@ export const initDatabase = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS files (
         id SERIAL PRIMARY KEY,
-        resume_id INTEGER REFERENCES resumes(id),
+        resume_id INTEGER REFERENCES resumes(id) ON DELETE CASCADE,
         file_type VARCHAR(50),
         file_name VARCHAR(255),
         file_url TEXT,

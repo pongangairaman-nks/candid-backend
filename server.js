@@ -8,6 +8,7 @@ import uploadRouter from './routes/upload.js';
 import analyzeRouter from './routes/analyze.js';
 import generateRouter from './routes/generate.js';
 import pdfRouter from './routes/pdf.js';
+import authRouter from './routes/auth.js';
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +29,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api', healthRouter);
+app.use('/api/auth', authRouter);
 app.use('/api', uploadRouter);
 app.use('/api', analyzeRouter);
 app.use('/api', generateRouter);
