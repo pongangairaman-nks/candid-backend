@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/database.js';
 import { analyzeJobDescription } from '../services/geminiService.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { getUserLLMConfig } from './llmConfig.js';
 
 const router = express.Router();
 
@@ -46,9 +47,20 @@ router.post('/analyze', authenticateToken, async (req, res) => {
             });
         }
 
-        // Analyze using Gemini
-        console.log('🤖 Calling Gemini API...');
-        const analysis = await analyzeJobDescription(jobDescription, resumeText);
+        // Get user's LLM configuration (required) - get analyzer config
+        const userConfig = await getUserLLMConfig(userId, 'analyzer');
+        if (!userConfig) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'LLM configuration not found. Please configure your LLM provider and API key in the Configuration page.'
+            });
+        }
+
+        console.log(`🔧 Using analyzer: ${userConfig.provider} - ${userConfig.model}`);
+
+        // Analyze using user's configured analyzer model
+        console.log('🤖 Calling LLM API for analysis...');
+        const analysis = await analyzeJobDescription(jobDescription, resumeText, userConfig);
 
         // Update database with analysis and job description
         await pool.query(

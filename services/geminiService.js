@@ -3,11 +3,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize Gemini API with new SDK
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// Get Gemini model - using gemini-2.5-flash (current free model)
-const getModel = () => {
+// Get Gemini model with user's API key
+const getModel = (apiKey) => {
+    if (!apiKey) {
+        throw new Error('Gemini API key not configured. Please configure your LLM settings in the Configuration page.');
+    }
+    const ai = new GoogleGenAI({ apiKey });
     return ai.models.generateContent;
 };
 
@@ -15,11 +16,18 @@ const getModel = () => {
  * Analyze job description and extract keywords, missing skills, and role focus
  * @param {string} jobDescription - The job description text
  * @param {string} resumeText - The master resume text
+ * @param {Object} userConfig - User's LLM configuration (model, apiKey)
  * @returns {Promise<Object>} Analysis results with keywords, missing_skills, and role_focus
  */
-export const analyzeJobDescription = async (jobDescription, resumeText) => {
+export const analyzeJobDescription = async (jobDescription, resumeText, userConfig = null) => {
     try {
-        const generateContent = getModel();
+        // Require user config with API key
+        if (!userConfig || !userConfig.apiKey) {
+            throw new Error('Gemini API key not configured. Please configure your LLM settings in the Configuration page.');
+        }
+
+        const generateContent = getModel(userConfig.apiKey);
+        const model = userConfig.model || 'gemini-2.5-flash';
 
         const prompt = `You are an expert resume and job description analyzer. Analyze the following job description and compare it with the candidate's resume.
 
@@ -45,7 +53,7 @@ Instructions:
 Respond with ONLY the JSON object, no additional text.`;
 
         const result = await generateContent({
-            model: 'gemini-2.5-flash',
+            model: model,
             contents: prompt
         });
         

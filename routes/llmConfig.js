@@ -1,0 +1,199 @@
+import express from 'express';
+import pool from '../config/database.js';
+import { authenticateToken } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Available models configuration
+const AVAILABLE_MODELS = {
+  claude: [
+    { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1 (Recommended)', provider: 'claude' },
+    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'claude' },
+    { id: 'claude-haiku-4-20250805', name: 'Claude Haiku 4', provider: 'claude' },
+  ],
+  gemini: [
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Free)', provider: 'gemini' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'gemini' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
+    { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'gemini' },
+  ],
+};
+
+// Get available models
+router.get('/models', (req, res) => {
+  try {
+    res.json(AVAILABLE_MODELS);
+  } catch (error) {
+    console.error('Error fetching models:', error);
+    res.status(500).json({ error: 'Failed to fetch models' });
+  }
+});
+
+// Get user's LLM configuration
+router.get('/config', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await pool.query(
+      'SELECT analyzer_provider, analyzer_model, generator_provider, generator_model, is_active FROM llm_configs WHERE user_id = $1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      // Return default config if not set
+      return res.json({
+        analyzer_provider: 'gemini',
+        analyzer_model: 'gemini-2.5-flash',
+        generator_provider: 'claude',
+        generator_model: 'claude-opus-4-1-20250805',
+        is_active: true,
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching LLM config:', error);
+    res.status(500).json({ error: 'Failed to fetch configuration' });
+  }
+});
+
+// Save or update user's LLM configuration
+router.post('/config', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      analyzer_provider,
+      analyzer_model,
+      analyzer_api_key,
+      generator_provider,
+      generator_model,
+      generator_api_key,
+    } = req.body;
+
+    // Validate input
+    if (
+      !analyzer_provider ||
+      !analyzer_model ||
+      !analyzer_api_key ||
+      !generator_provider ||
+      !generator_model ||
+      !generator_api_key
+    ) {
+      return res.status(400).json({ error: 'All analyzer and generator fields are required' });
+    }
+
+    // Validate models exist
+    if (!AVAILABLE_MODELS[analyzer_provider]?.some(m => m.id === analyzer_model)) {
+      return res.status(400).json({ error: 'Invalid analyzer provider or model' });
+    }
+
+    if (!AVAILABLE_MODELS[generator_provider]?.some(m => m.id === generator_model)) {
+      return res.status(400).json({ error: 'Invalid generator provider or model' });
+    }
+
+    // Check if config exists
+    const existingConfig = await pool.query(
+      'SELECT id FROM llm_configs WHERE user_id = $1',
+      [userId]
+    );
+
+    let result;
+    if (existingConfig.rows.length > 0) {
+      // Update existing config
+      result = await pool.query(
+        `UPDATE llm_configs 
+         SET analyzer_provider = $1, analyzer_model = $2, analyzer_api_key = $3,
+             generator_provider = $4, generator_model = $5, generator_api_key = $6,
+             updated_at = CURRENT_TIMESTAMP 
+         WHERE user_id = $7 
+         RETURNING analyzer_provider, analyzer_model, generator_provider, generator_model, is_active`,
+        [
+          analyzer_provider,
+          analyzer_model,
+          analyzer_api_key,
+          generator_provider,
+          generator_model,
+          generator_api_key,
+          userId,
+        ]
+      );
+    } else {
+      // Create new config
+      result = await pool.query(
+        `INSERT INTO llm_configs 
+         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
+         RETURNING analyzer_provider, analyzer_model, generator_provider, generator_model, is_active`,
+        [
+          userId,
+          analyzer_provider,
+          analyzer_model,
+          analyzer_api_key,
+          generator_provider,
+          generator_model,
+          generator_api_key,
+        ]
+      );
+    }
+
+    console.log(`✅ LLM config saved for user ${userId}:`);
+    console.log(`   Analyzer: ${analyzer_provider} - ${analyzer_model}`);
+    console.log(`   Generator: ${generator_provider} - ${generator_model}`);
+    res.json({
+      message: 'Configuration saved successfully',
+      config: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error saving LLM config:', error);
+    res.status(500).json({ error: 'Failed to save configuration' });
+  }
+});
+
+// Get user's LLM config with API key (for backend use only)
+export const getUserLLMConfig = async (userId, type = 'both') => {
+  try {
+    const result = await pool.query(
+      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key FROM llm_configs WHERE user_id = $1 AND is_active = TRUE',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const config = result.rows[0];
+
+    if (type === 'analyzer') {
+      return {
+        provider: config.analyzer_provider,
+        model: config.analyzer_model,
+        apiKey: config.analyzer_api_key,
+      };
+    } else if (type === 'generator') {
+      return {
+        provider: config.generator_provider,
+        model: config.generator_model,
+        apiKey: config.generator_api_key,
+      };
+    } else {
+      // Return both
+      return {
+        analyzer: {
+          provider: config.analyzer_provider,
+          model: config.analyzer_model,
+          apiKey: config.analyzer_api_key,
+        },
+        generator: {
+          provider: config.generator_provider,
+          model: config.generator_model,
+          apiKey: config.generator_api_key,
+        },
+      };
+    }
+  } catch (error) {
+    console.error('Error fetching user LLM config:', error);
+    return null;
+  }
+};
+
+export default router;

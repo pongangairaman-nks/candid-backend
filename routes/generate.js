@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/database.js';
 import { tailorResumeContent } from '../services/claudeService.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { getUserLLMConfig } from './llmConfig.js';
 
 const router = express.Router();
 
@@ -52,13 +53,35 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
         console.log(`  Missing skills: ${analysis.missing_skills.length}`);
         console.log(`  Role focus: ${analysis.role_focus.substring(0, 50)}...`);
 
-        // Call Claude to tailor the resume
-        console.log('🤖 Calling Claude for content tailoring...');
+        // Get user's LLM configuration (required) - get both generator and analyzer for fallback
+        const fullConfig = await getUserLLMConfig(userId, 'both');
+        if (!fullConfig || !fullConfig.generator) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'LLM configuration not found. Please configure your LLM provider and API key in the Configuration page.'
+            });
+        }
+
+        console.log(`🔧 Using generator: ${fullConfig.generator.provider} - ${fullConfig.generator.model}`);
+
+        // Prepare config for tailorResumeContent with both generator and analyzer info
+        const userConfig = {
+            provider: fullConfig.generator.provider,
+            model: fullConfig.generator.model,
+            apiKey: fullConfig.generator.apiKey,
+            analyzer_provider: fullConfig.analyzer.provider,
+            analyzer_model: fullConfig.analyzer.model,
+            analyzer_api_key: fullConfig.analyzer.apiKey
+        };
+
+        // Call LLM to tailor the resume
+        console.log('🤖 Calling LLM for content tailoring...');
         const tailoredLatex = await tailorResumeContent(
             resume.original_latex,
             analysis,
             resume.master_resume_text,
-            resume.job_description
+            resume.job_description,
+            userConfig
         );
 
         // Save tailored LaTeX to database

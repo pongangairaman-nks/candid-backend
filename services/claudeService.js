@@ -4,36 +4,36 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-    apiKey: process.env.CLAUDE_API_KEY,
-});
-
-// Initialize Gemini as fallback
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 /**
  * Generate tailored resume using Claude (with Gemini fallback) while preserving LaTeX template structure
  * @param {string} originalLatex - The original LaTeX template
  * @param {Object} analysis - Gemini analysis results (keywords, missing_skills, role_focus)
  * @param {string} masterResumeText - Master resume text content
  * @param {string} jobDescription - Job description text
+ * @param {Object} userConfig - User's LLM configuration (model, apiKey)
  * @returns {Promise<string>} Tailored LaTeX content
  */
 export const tailorResumeContent = async (
     originalLatex,
     analysis,
     masterResumeText,
-    jobDescription
+    jobDescription,
+    userConfig = null
 ) => {
     try {
         // Try Claude first
         console.log('🤖 Attempting to call Claude API for resume tailoring...');
-        return await tailorWithClaude(originalLatex, analysis, masterResumeText, jobDescription);
+        return await tailorWithClaude(originalLatex, analysis, masterResumeText, jobDescription, userConfig);
     } catch (claudeError) {
         console.warn('⚠️  Claude API failed, falling back to Gemini:', claudeError.message);
         try {
-            return await tailorWithGemini(originalLatex, analysis, masterResumeText, jobDescription);
+            // For fallback, we need to get the analyzer config which has Gemini API key
+            const analyzerConfig = {
+                provider: userConfig?.analyzer_provider || 'gemini',
+                model: userConfig?.analyzer_model || 'gemini-2.5-flash',
+                apiKey: userConfig?.analyzer_api_key
+            };
+            return await tailorWithGemini(originalLatex, analysis, masterResumeText, jobDescription, analyzerConfig);
         } catch (geminiError) {
             console.error('❌ Both Claude and Gemini failed');
             throw new Error(`Failed to tailor resume: Claude - ${claudeError.message}, Gemini - ${geminiError.message}`);
@@ -44,7 +44,12 @@ export const tailorResumeContent = async (
 /**
  * Tailor resume using Claude
  */
-const tailorWithClaude = async (originalLatex, analysis, masterResumeText, jobDescription) => {
+const tailorWithClaude = async (originalLatex, analysis, masterResumeText, jobDescription, userConfig = null) => {
+    // Require user config with API key
+    if (!userConfig || !userConfig.apiKey) {
+        throw new Error('Claude API key not configured. Please configure your LLM settings in the Configuration page.');
+    }
+
     const systemPrompt = `You are an expert resume content editor specializing in LaTeX documents. Your ONLY job is to update the written content inside a LaTeX resume template to better match a job description.
 
 CRITICAL RULES:
@@ -90,8 +95,11 @@ INSTRUCTIONS:
 
 Return ONLY the updated LaTeX document. No explanations, no markdown, no code blocks - just the raw LaTeX content.`;
 
-    const message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+    const model = userConfig.model || 'claude-opus-4-1-20250805';
+    const client = new Anthropic({ apiKey: userConfig.apiKey });
+
+    const message = await client.messages.create({
+        model: model,
         max_tokens: 8000,
         temperature: 0.3,
         system: systemPrompt,
@@ -114,17 +122,23 @@ Return ONLY the updated LaTeX document. No explanations, no markdown, no code bl
         }
     }
 
-    console.log('✅ Claude tailoring complete');
+    console.log(`✅ Claude (${model}) tailoring complete`);
     return tailoredLatex;
 };
 
 /**
  * Tailor resume using Gemini (fallback)
  */
-const tailorWithGemini = async (originalLatex, analysis, masterResumeText, jobDescription) => {
+const tailorWithGemini = async (originalLatex, analysis, masterResumeText, jobDescription, analyzerConfig = null) => {
     console.log('🤖 Using Gemini for resume tailoring...');
     
+    if (!analyzerConfig || !analyzerConfig.apiKey) {
+        throw new Error('Gemini API key not available for fallback');
+    }
+    
+    const ai = new GoogleGenAI({ apiKey: analyzerConfig.apiKey });
     const generateContent = ai.models.generateContent;
+    const model = analyzerConfig.model || 'gemini-2.5-flash';
     
     const prompt = `You are an expert resume content editor specializing in LaTeX documents. Your ONLY job is to update the written content inside a LaTeX resume template to better match a job description.
 
@@ -152,7 +166,7 @@ ${originalLatex}
 Update the resume content to emphasize these keywords and align with the role focus. Preserve all LaTeX structure. Return ONLY the updated LaTeX document.`;
 
     const result = await generateContent({
-        model: 'gemini-2.5-flash',
+        model: model,
         contents: prompt
     });
 
