@@ -78,12 +78,12 @@ router.post('/analyze', authenticateToken, async (req, res) => {
             data: {
                 resumeId: actualResumeId,
                 analysis: {
-                    keywords: analysis.keywords,
+                    keywords: analysis.primary_keywords,
                     missing_skills: analysis.missing_skills,
                     role_focus: analysis.role_focus
                 },
                 stats: {
-                    keywordsCount: analysis.keywords.length,
+                    keywordsCount: analysis.primary_keywords.length,
                     missingSkillsCount: analysis.missing_skills.length,
                     jdLength: jobDescription.length
                 }

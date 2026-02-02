@@ -50,29 +50,58 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
             throw new Error('Unable to extract text from Gemini response');
         }
 
-        // Parse JSON response
+        // Parse JSON response with multiple fallback strategies
         let analysis;
         try {
-            // Remove markdown code blocks if present
-            const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            analysis = JSON.parse(cleanedText);
+            // Strategy 1: Remove markdown code blocks
+            let cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            
+            // Strategy 2: Extract JSON from text if wrapped in other content
+            if (!cleanedText.startsWith('{')) {
+                const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    cleanedText = jsonMatch[0];
+                }
+            }
+            
+            // Strategy 3: Parse the JSON
+            if (cleanedText.startsWith('{') && cleanedText.endsWith('}')) {
+                analysis = JSON.parse(cleanedText);
+            } else {
+                throw new Error('Response is not valid JSON object');
+            }
         } catch (parseError) {
             console.error('JSON parse error:', parseError.message);
-            console.error('Raw response:', text);
+            console.error('Raw response:', text.substring(0, 500));
             throw new Error('Failed to parse Gemini response as JSON');
         }
 
-        // Validate response structure
-        if (!analysis.keywords || !analysis.missing_skills || !analysis.role_focus) {
+        // Validate response structure - check for new ATS analysis format
+        if (!analysis.primary_keywords || !analysis.missing_skills || !analysis.role_focus) {
+            console.error('Invalid structure. Received keys:', Object.keys(analysis));
+            console.error('Full response:', JSON.stringify(analysis, null, 2));
             throw new Error('Invalid analysis structure from Gemini');
         }
 
-        console.log('✅ Gemini analysis complete');
-        console.log(`  Keywords: ${analysis.keywords.length}`);
-        console.log(`  Missing skills: ${analysis.missing_skills.length}`);
-        console.log(`  Role focus: ${analysis.role_focus.substring(0, 50)}...`);
+        // Ensure all required arrays exist and are arrays
+        const sanitizedAnalysis = {
+            primary_keywords: Array.isArray(analysis.primary_keywords) ? analysis.primary_keywords : [],
+            secondary_keywords: Array.isArray(analysis.secondary_keywords) ? analysis.secondary_keywords : [],
+            missing_skills: Array.isArray(analysis.missing_skills) ? analysis.missing_skills : [],
+            matching_skills: Array.isArray(analysis.matching_skills) ? analysis.matching_skills : [],
+            experience_gaps: Array.isArray(analysis.experience_gaps) ? analysis.experience_gaps : [],
+            role_focus: String(analysis.role_focus || ''),
+            seniority_level: String(analysis.seniority_level || 'mid'),
+            ats_optimization_tips: Array.isArray(analysis.ats_optimization_tips) ? analysis.ats_optimization_tips : [],
+        };
 
-        return analysis;
+        console.log('✅ Gemini analysis complete');
+        console.log(`  Primary keywords: ${sanitizedAnalysis.primary_keywords.length}`);
+        console.log(`  Secondary keywords: ${sanitizedAnalysis.secondary_keywords.length}`);
+        console.log(`  Missing skills: ${sanitizedAnalysis.missing_skills.length}`);
+        console.log(`  Role focus: ${sanitizedAnalysis.role_focus.substring(0, 50)}...`);
+
+        return sanitizedAnalysis;
 
     } catch (error) {
         console.error('❌ Gemini API error:', error.message);

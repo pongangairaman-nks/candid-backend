@@ -46,12 +46,32 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
             });
         }
 
-        const analysis = resume.analysis_json;
+        let analysis = resume.analysis_json;
+        
+        // Parse analysis if it's a string
+        if (typeof analysis === 'string') {
+            try {
+                analysis = JSON.parse(analysis);
+            } catch (parseError) {
+                console.error('Failed to parse analysis_json:', parseError);
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid analysis data. Please run /analyze first.'
+                });
+            }
+        }
+
+        if (!analysis) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Analysis data is empty. Please run /analyze first.'
+            });
+        }
 
         console.log('📊 Using analysis:');
-        console.log(`  Keywords: ${analysis.keywords.length}`);
-        console.log(`  Missing skills: ${analysis.missing_skills.length}`);
-        console.log(`  Role focus: ${analysis.role_focus.substring(0, 50)}...`);
+        console.log(`  Primary keywords: ${analysis.primary_keywords?.length || analysis.keywords?.length || 0}`);
+        console.log(`  Missing skills: ${analysis.missing_skills?.length || 0}`);
+        console.log(`  Role focus: ${analysis.role_focus?.substring(0, 50) || 'N/A'}...`);
 
         // Get user's LLM configuration (required) - get both generator and analyzer for fallback
         const fullConfig = await getUserLLMConfig(userId, 'both');
@@ -104,7 +124,7 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
                 stats: {
                     originalLength: resume.original_latex.length,
                     tailoredLength: tailoredLatex.length,
-                    keywordsUsed: analysis.keywords.length,
+                    keywordsUsed: (analysis.primary_keywords || analysis.keywords || []).length,
                     structurePreserved: tailoredLatex.includes('\\documentclass')
                 }
             }

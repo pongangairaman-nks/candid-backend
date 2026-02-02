@@ -64,6 +64,8 @@ export const initDatabase = async () => {
         analysis_json JSONB,
         tailored_latex TEXT,
         pdf_url TEXT,
+        ats_score INTEGER,
+        ats_analysis JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

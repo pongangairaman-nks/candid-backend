@@ -15,21 +15,17 @@ ${jobDescription}
 CANDIDATE'S RESUME:
 ${resumeText}
 
-Return your response ONLY as valid JSON in the exact structure below. Do not include markdown, commentary, or extra text.
+CRITICAL: Return your response as ONLY a valid JSON object. No markdown, no code blocks, no extra text before or after.
 
 {
-  "primary_keywords": ["keyword1", "keyword2", "..."],
-  "secondary_keywords": ["keyword1", "keyword2", "..."],
-  "missing_skills": ["skill1", "skill2", "..."],
-  "matching_skills": ["skill1", "skill2", "..."],
-  "experience_gaps": ["gap1", "gap2", "..."],
-  "role_focus": "1-2 sentence summary",
-  "seniority_level": "entry | mid | senior | lead | manager | director",
-  "ats_optimization_tips": [
-    "tip1",
-    "tip2",
-    "tip3"
-  ]
+  "primary_keywords": ["keyword1", "keyword2"],
+  "secondary_keywords": ["keyword1", "keyword2"],
+  "missing_skills": ["skill1", "skill2"],
+  "matching_skills": ["skill1", "skill2"],
+  "experience_gaps": ["gap1"],
+  "role_focus": "Role summary",
+  "seniority_level": "mid",
+  "ats_optimization_tips": ["tip1"]
 }
 
 INSTRUCTIONS:
