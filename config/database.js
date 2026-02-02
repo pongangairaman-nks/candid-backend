@@ -95,6 +95,7 @@ export const initDatabase = async () => {
         generator_provider VARCHAR(50) NOT NULL DEFAULT 'claude',
         generator_model VARCHAR(100) NOT NULL DEFAULT 'claude-opus-4-1-20250805',
         generator_api_key TEXT NOT NULL,
+        master_content TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -81,7 +81,10 @@ ${analysis.missing_skills.join(', ')}
 MASTER RESUME CONTENT (for reference):
 ${masterResumeText}
 
-ORIGINAL LaTeX TEMPLATE:
+${userConfig?.master_content ? `COMPREHENSIVE SKILLS & EXPERIENCE REPOSITORY (additional reference material):
+${userConfig.master_content}
+
+` : ''}ORIGINAL LaTeX TEMPLATE:
 ${originalLatex}
 
 INSTRUCTIONS:

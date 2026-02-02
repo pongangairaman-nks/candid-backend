@@ -71,7 +71,8 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
             apiKey: fullConfig.generator.apiKey,
             analyzer_provider: fullConfig.analyzer.provider,
             analyzer_model: fullConfig.analyzer.model,
-            analyzer_api_key: fullConfig.analyzer.apiKey
+            analyzer_api_key: fullConfig.analyzer.apiKey,
+            master_content: fullConfig.generator.masterContent
         };
 
         // Call LLM to tailor the resume

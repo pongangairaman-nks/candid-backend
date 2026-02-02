@@ -35,7 +35,7 @@ router.get('/config', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     
     const result = await pool.query(
-      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, is_active FROM llm_configs WHERE user_id = $1',
+      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, is_active FROM llm_configs WHERE user_id = $1',
       [userId]
     );
 
@@ -48,6 +48,7 @@ router.get('/config', authenticateToken, async (req, res) => {
         generator_provider: 'claude',
         generator_model: 'claude-opus-4-1-20250805',
         generator_api_key: null,
+        master_content: null,
         is_active: true,
       });
     }
@@ -70,9 +71,54 @@ router.post('/config', authenticateToken, async (req, res) => {
       generator_provider,
       generator_model,
       generator_api_key,
+      master_content,
     } = req.body;
 
-    // Validate input
+    // Validate master_content length if provided (max ~50KB for 2-3 pages)
+    if (master_content && master_content.length > 50000) {
+      return res.status(400).json({ error: 'Master content exceeds maximum length (50KB)' });
+    }
+
+    // Check if config exists
+    const existingConfig = await pool.query(
+      'SELECT * FROM llm_configs WHERE user_id = $1',
+      [userId]
+    );
+
+    // If only master_content is provided, do a partial update
+    const isPartialUpdate = !analyzer_provider && !analyzer_model && !analyzer_api_key && !generator_provider && !generator_model && !generator_api_key && master_content;
+
+    if (isPartialUpdate) {
+      // Partial update - only update master_content
+      console.log(`📝 Partial update attempt for user ${userId}, existingConfig rows: ${existingConfig.rows.length}`);
+      
+      if (existingConfig.rows.length === 0) {
+        console.log(`❌ No config found for user ${userId}`);
+        return res.status(400).json({ error: 'No existing configuration found. Please configure LLM providers first.' });
+      }
+
+      const result = await pool.query(
+        `UPDATE llm_configs 
+         SET master_content = $1,
+             updated_at = CURRENT_TIMESTAMP 
+         WHERE user_id = $2 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, is_active`,
+        [master_content || null, userId]
+      );
+
+      if (result.rows.length === 0) {
+        console.log(`❌ Update failed for user ${userId}`);
+        return res.status(500).json({ error: 'Failed to update master content' });
+      }
+
+      console.log(`✅ Master content updated for user ${userId}`);
+      return res.json({
+        message: 'Master content saved successfully',
+        config: result.rows[0],
+      });
+    }
+
+    // Full update - validate all required fields
     if (
       !analyzer_provider ||
       !analyzer_model ||
@@ -93,12 +139,6 @@ router.post('/config', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid generator provider or model' });
     }
 
-    // Check if config exists
-    const existingConfig = await pool.query(
-      'SELECT id FROM llm_configs WHERE user_id = $1',
-      [userId]
-    );
-
     let result;
     if (existingConfig.rows.length > 0) {
       // Update existing config
@@ -106,9 +146,10 @@ router.post('/config', authenticateToken, async (req, res) => {
         `UPDATE llm_configs 
          SET analyzer_provider = $1, analyzer_model = $2, analyzer_api_key = $3,
              generator_provider = $4, generator_model = $5, generator_api_key = $6,
+             master_content = $7,
              updated_at = CURRENT_TIMESTAMP 
-         WHERE user_id = $7 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, is_active`,
+         WHERE user_id = $8 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, is_active`,
         [
           analyzer_provider,
           analyzer_model,
@@ -116,6 +157,7 @@ router.post('/config', authenticateToken, async (req, res) => {
           generator_provider,
           generator_model,
           generator_api_key,
+          master_content || null,
           userId,
         ]
       );
@@ -123,9 +165,9 @@ router.post('/config', authenticateToken, async (req, res) => {
       // Create new config
       result = await pool.query(
         `INSERT INTO llm_configs 
-         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7) 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, is_active`,
+         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, is_active`,
         [
           userId,
           analyzer_provider,
@@ -134,6 +176,7 @@ router.post('/config', authenticateToken, async (req, res) => {
           generator_provider,
           generator_model,
           generator_api_key,
+          master_content || null,
         ]
       );
     }
@@ -155,7 +198,7 @@ router.post('/config', authenticateToken, async (req, res) => {
 export const getUserLLMConfig = async (userId, type = 'both') => {
   try {
     const result = await pool.query(
-      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key FROM llm_configs WHERE user_id = $1 AND is_active = TRUE',
+      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content FROM llm_configs WHERE user_id = $1 AND is_active = TRUE',
       [userId]
     );
 
@@ -176,6 +219,7 @@ export const getUserLLMConfig = async (userId, type = 'both') => {
         provider: config.generator_provider,
         model: config.generator_model,
         apiKey: config.generator_api_key,
+        masterContent: config.master_content,
       };
     } else {
       // Return both
@@ -189,6 +233,7 @@ export const getUserLLMConfig = async (userId, type = 'both') => {
           provider: config.generator_provider,
           model: config.generator_model,
           apiKey: config.generator_api_key,
+          masterContent: config.master_content,
         },
       };
     }
