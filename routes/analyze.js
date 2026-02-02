@@ -1,47 +1,48 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { analyzeJobDescription } from '../services/geminiService.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // POST /api/analyze - Analyze job description using Gemini
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', authenticateToken, async (req, res) => {
     try {
         const { resumeId, jobDescription } = req.body;
+        const userId = req.user.id;
 
         // Validate input
-        if (!resumeId || !jobDescription) {
+        if (!jobDescription) {
             return res.status(400).json({
                 status: 'error',
-                message: 'Both resumeId and jobDescription are required',
-                received: {
-                    resumeId: !!resumeId,
-                    jobDescription: !!jobDescription
-                }
+                message: 'jobDescription is required'
             });
         }
 
-        console.log(`📊 Analyzing job description for resume ID: ${resumeId}`);
+        console.log(`📊 Analyzing job description for user ID: ${userId}`);
 
-        // Fetch resume data from database
+        // Fetch the user's first resume (master template)
         const resumeResult = await pool.query(
-            'SELECT master_resume_text FROM resumes WHERE id = $1',
-            [resumeId]
+            'SELECT id, master_resume_text FROM resumes WHERE user_id = $1 ORDER BY id ASC LIMIT 1',
+            [userId]
         );
 
         if (resumeResult.rows.length === 0) {
             return res.status(404).json({
                 status: 'error',
-                message: `Resume with ID ${resumeId} not found`
+                message: 'No resume found for user. Please save a master template first.'
             });
         }
 
-        const resumeText = resumeResult.rows[0].master_resume_text;
+        const resume = resumeResult.rows[0];
+        const actualResumeId = resume.id;
+
+        const resumeText = resume.master_resume_text;
 
         if (!resumeText) {
             return res.status(400).json({
                 status: 'error',
-                message: 'Resume text not found. Please upload resume files first.'
+                message: 'Resume text not found. Please save a master template first.'
             });
         }
 
@@ -54,7 +55,7 @@ router.post('/analyze', async (req, res) => {
             `UPDATE resumes 
        SET job_description = $1, analysis_json = $2, updated_at = NOW()
        WHERE id = $3`,
-            [jobDescription, JSON.stringify(analysis), resumeId]
+            [jobDescription, JSON.stringify(analysis), actualResumeId]
         );
 
         console.log('✅ Analysis saved to database');
@@ -63,7 +64,7 @@ router.post('/analyze', async (req, res) => {
             status: 'success',
             message: 'Job description analyzed successfully',
             data: {
-                resumeId,
+                resumeId: actualResumeId,
                 analysis: {
                     keywords: analysis.keywords,
                     missing_skills: analysis.missing_skills,

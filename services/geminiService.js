@@ -1,14 +1,14 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize Gemini API
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Initialize Gemini API with new SDK
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Get Gemini 1.5 Flash model
+// Get Gemini model - using gemini-2.5-flash (current free model)
 const getModel = () => {
-    return genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    return ai.models.generateContent;
 };
 
 /**
@@ -19,7 +19,7 @@ const getModel = () => {
  */
 export const analyzeJobDescription = async (jobDescription, resumeText) => {
     try {
-        const model = getModel();
+        const generateContent = getModel();
 
         const prompt = `You are an expert resume and job description analyzer. Analyze the following job description and compare it with the candidate's resume.
 
@@ -44,9 +44,22 @@ Instructions:
 
 Respond with ONLY the JSON object, no additional text.`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const result = await generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt
+        });
+        
+        // Handle the new SDK response format
+        let text;
+        if (typeof result.text === 'function') {
+            text = result.text();
+        } else if (result.text) {
+            text = result.text;
+        } else if (result.candidates && result.candidates[0]) {
+            text = result.candidates[0].content.parts[0].text;
+        } else {
+            throw new Error('Unable to extract text from Gemini response');
+        }
 
         // Parse JSON response
         let analysis;
@@ -83,9 +96,11 @@ Respond with ONLY the JSON object, no additional text.`;
  */
 export const testGeminiConnection = async () => {
     try {
-        const model = getModel();
-        const result = await model.generateContent('Say "Hello" in JSON format: {"message": "Hello"}');
-        const response = await result.response;
+        const generateContent = getModel();
+        const result = await generateContent({
+            model: 'gemini-2.5-flash',
+            contents: 'Say "Hello" in JSON format: {"message": "Hello"}'
+        });
         console.log('✅ Gemini API connection successful');
         return true;
     } catch (error) {

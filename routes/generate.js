@@ -1,45 +1,40 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { tailorResumeContent } from '../services/claudeService.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // POST /api/generate-resume - Generate tailored resume using Claude
-router.post('/generate-resume', async (req, res) => {
+router.post('/generate-resume', authenticateToken, async (req, res) => {
     try {
         const { resumeId } = req.body;
+        const userId = req.user.id;
 
-        // Validate input
-        if (!resumeId) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'resumeId is required'
-            });
-        }
+        console.log(`📝 Generating tailored resume for user ID: ${userId}`);
 
-        console.log(`📝 Generating tailored resume for ID: ${resumeId}`);
-
-        // Fetch all required data from database
+        // Fetch the user's first resume (master template)
         const resumeResult = await pool.query(
-            `SELECT original_latex, master_resume_text, job_description, analysis_json 
-       FROM resumes WHERE id = $1`,
-            [resumeId]
+            `SELECT id, original_latex, master_resume_text, job_description, analysis_json 
+       FROM resumes WHERE user_id = $1 ORDER BY id ASC LIMIT 1`,
+            [userId]
         );
 
         if (resumeResult.rows.length === 0) {
             return res.status(404).json({
                 status: 'error',
-                message: `Resume with ID ${resumeId} not found`
+                message: 'No resume found for user. Please save a master template first.'
             });
         }
 
         const resume = resumeResult.rows[0];
+        const actualResumeId = resume.id;
 
         // Validate required data
         if (!resume.original_latex) {
             return res.status(400).json({
                 status: 'error',
-                message: 'Original LaTeX template not found. Please upload files first.'
+                message: 'Original LaTeX template not found. Please save a master template first.'
             });
         }
 
@@ -71,7 +66,7 @@ router.post('/generate-resume', async (req, res) => {
             `UPDATE resumes 
        SET tailored_latex = $1, updated_at = NOW()
        WHERE id = $2`,
-            [tailoredLatex, resumeId]
+            [tailoredLatex, actualResumeId]
         );
 
         console.log('✅ Tailored resume saved to database');
@@ -80,7 +75,7 @@ router.post('/generate-resume', async (req, res) => {
             status: 'success',
             message: 'Resume tailored successfully',
             data: {
-                resumeId,
+                resumeId: actualResumeId,
                 latex: tailoredLatex,
                 stats: {
                     originalLength: resume.original_latex.length,
