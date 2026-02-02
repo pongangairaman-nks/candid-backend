@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { getGeminiAnalysisPrompt } from '../prompts/geminiAnalysisPrompt.js';
 
 dotenv.config();
 
@@ -29,28 +30,8 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         const generateContent = getModel(userConfig.apiKey);
         const model = userConfig.model || 'gemini-2.5-flash';
 
-        const prompt = `You are an expert resume and job description analyzer. Analyze the following job description and compare it with the candidate's resume.
+        const prompt = getGeminiAnalysisPrompt(jobDescription, resumeText);
 
-JOB DESCRIPTION:
-${jobDescription}
-
-CANDIDATE'S RESUME:
-${resumeText}
-
-Please provide a detailed analysis in the following JSON format (respond ONLY with valid JSON, no markdown or explanations):
-
-{
-  "keywords": ["keyword1", "keyword2", ...],
-  "missing_skills": ["skill1", "skill2", ...],
-  "role_focus": "brief description of the role's main focus"
-}
-
-Instructions:
-1. "keywords": Extract 10-15 most important keywords, skills, and technologies from the job description that should be emphasized in the resume
-2. "missing_skills": Identify 5-10 skills or qualifications mentioned in the JD that are NOT present in the candidate's resume
-3. "role_focus": Provide a 1-2 sentence summary of what this role primarily focuses on (e.g., "Backend development with focus on scalable microservices and cloud infrastructure")
-
-Respond with ONLY the JSON object, no additional text.`;
 
         const result = await generateContent({
             model: model,
