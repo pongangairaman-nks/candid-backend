@@ -117,6 +117,37 @@ export const initDatabase = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS job_applications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        position VARCHAR(255) NOT NULL,
+        company_name VARCHAR(255) NOT NULL,
+        industry VARCHAR(100),
+        company_url TEXT,
+        job_url TEXT,
+        job_portal VARCHAR(100),
+        status VARCHAR(50) DEFAULT 'applied',
+        applied_date DATE,
+        interview_date DATE,
+        notes TEXT,
+        resume_id INTEGER REFERENCES resumes(id) ON DELETE SET NULL,
+        cover_letter_id INTEGER REFERENCES cover_letters(id) ON DELETE SET NULL,
+        resume_pdf_url TEXT,
+        cover_letter_pdf_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON job_applications(user_id);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status);
+    `);
     
     console.log('✅ Database tables initialized');
   } catch (error) {

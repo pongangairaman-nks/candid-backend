@@ -12,6 +12,7 @@ import authRouter from './routes/auth.js';
 import resumeRouter from './routes/resume.js';
 import llmConfigRouter from './routes/llmConfig.js';
 import atsRouter from './routes/atsAnalysis.js';
+import jobApplicationsRouter from './routes/jobApplications.js';
 
 // Load environment variables
 dotenv.config();
@@ -36,6 +37,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/resume', resumeRouter);
 app.use('/api/llm', llmConfigRouter);
 app.use('/api/ats', atsRouter);
+app.use('/api/job-applications', jobApplicationsRouter);
 app.use('/api', uploadRouter);
 app.use('/api', analyzeRouter);
 app.use('/api', generateRouter);
