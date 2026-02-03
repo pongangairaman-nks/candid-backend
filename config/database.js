@@ -82,21 +82,16 @@ export const initDatabase = async () => {
       );
     `);
 
-    // Drop old llm_configs table if it exists with old schema
-    await client.query(`
-      DROP TABLE IF EXISTS llm_configs CASCADE;
-    `);
-
     await client.query(`
       CREATE TABLE IF NOT EXISTS llm_configs (
         id SERIAL PRIMARY KEY,
         user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
         analyzer_provider VARCHAR(50) NOT NULL DEFAULT 'gemini',
         analyzer_model VARCHAR(100) NOT NULL DEFAULT 'gemini-2.5-flash',
-        analyzer_api_key TEXT NOT NULL,
+        analyzer_api_key TEXT,
         generator_provider VARCHAR(50) NOT NULL DEFAULT 'claude',
         generator_model VARCHAR(100) NOT NULL DEFAULT 'claude-opus-4-1-20250805',
-        generator_api_key TEXT NOT NULL,
+        generator_api_key TEXT,
         master_content TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

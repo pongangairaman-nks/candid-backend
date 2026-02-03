@@ -194,9 +194,12 @@ router.get('/master-cover-letter-template', authenticateToken, async (req, res) 
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'No master cover letter template found',
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          templateId: null,
+          latexCode: '',
+        },
       });
     }
 
