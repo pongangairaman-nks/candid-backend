@@ -107,6 +107,21 @@ export const initDatabase = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_llm_configs_user_id ON llm_configs(user_id);
     `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cover_letters (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        original_latex TEXT,
+        master_cover_letter_text TEXT,
+        job_description TEXT,
+        analysis_json JSONB,
+        tailored_latex TEXT,
+        pdf_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     
     console.log('✅ Database tables initialized');
   } catch (error) {
