@@ -126,3 +126,74 @@ export const testGeminiConnection = async () => {
         return false;
     }
 };
+
+/**
+ * Optimize a selected section of the resume using Gemini
+ */
+export const optimizeSectionWithGemini = async (
+    selectedText,
+    fullLatexCode,
+    jobDescription,
+    prompt,
+    userConfig
+) => {
+    if (!userConfig || !userConfig.apiKey) {
+        throw new Error('Gemini API key not configured. Please configure your LLM settings in the Configuration page.');
+    }
+
+    const generateContent = getModel(userConfig.apiKey);
+    const model = userConfig.model || 'gemini-2.5-flash';
+
+    const systemPrompt = `You are a professional resume optimization expert. Your task is to optimize a selected section of a resume to better match a job description.
+
+IMPORTANT RULES:
+1. Optimize ONLY the selected text provided
+2. Preserve LaTeX syntax and commands
+3. Keep the same structure and formatting
+4. Make the content more relevant to the job description
+5. Return ONLY the optimized text, nothing else
+
+Job Description Context:
+${jobDescription}
+
+Full Resume Context (for reference):
+${fullLatexCode}`;
+
+    const userMessage = `${prompt}
+
+Selected text to optimize:
+${selectedText}
+
+Please optimize this section to better match the job description while preserving all LaTeX formatting.`;
+
+    try {
+        const result = await generateContent({
+            model: model,
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        { text: systemPrompt },
+                        { text: userMessage }
+                    ]
+                }
+            ]
+        });
+
+        let optimizedText;
+        if (typeof result.text === 'function') {
+            optimizedText = result.text();
+        } else if (result.text) {
+            optimizedText = result.text;
+        } else if (result.candidates && result.candidates[0]) {
+            optimizedText = result.candidates[0].content.parts[0].text;
+        } else {
+            throw new Error('Unable to extract text from Gemini response');
+        }
+
+        return optimizedText.trim();
+    } catch (error) {
+        console.error('❌ Gemini section optimization error:', error.message);
+        throw new Error(`Failed to optimize section with Gemini: ${error.message}`);
+    }
+};

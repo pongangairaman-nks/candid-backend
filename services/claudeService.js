@@ -211,3 +211,64 @@ export const testClaudeConnection = async () => {
         return false;
     }
 };
+
+/**
+ * Optimize a selected section of the resume using Claude
+ */
+export const optimizeSectionWithClaude = async (
+    selectedText,
+    fullLatexCode,
+    jobDescription,
+    prompt,
+    userConfig
+) => {
+    if (!userConfig || !userConfig.apiKey) {
+        throw new Error('Claude API key not configured. Please configure your LLM settings in the Configuration page.');
+    }
+
+    const client = new Anthropic({
+        apiKey: userConfig.apiKey,
+    });
+
+    const systemPrompt = `You are a professional resume optimization expert. Your task is to optimize a selected section of a resume to better match a job description.
+
+IMPORTANT RULES:
+1. Optimize ONLY the selected text provided
+2. Preserve LaTeX syntax and commands
+3. Keep the same structure and formatting
+4. Make the content more relevant to the job description
+5. Return ONLY the optimized text, nothing else
+
+Job Description Context:
+${jobDescription}
+
+Full Resume Context (for reference):
+${fullLatexCode}`;
+
+    const userMessage = `${prompt}
+
+Selected text to optimize:
+${selectedText}
+
+Please optimize this section to better match the job description while preserving all LaTeX formatting.`;
+
+    try {
+        const response = await client.messages.create({
+            model: userConfig.model || 'claude-opus-4-1-20250805',
+            max_tokens: 2000,
+            system: systemPrompt,
+            messages: [
+                {
+                    role: 'user',
+                    content: userMessage,
+                },
+            ],
+        });
+
+        const optimizedText = response.content[0].type === 'text' ? response.content[0].text : '';
+        return optimizedText.trim();
+    } catch (error) {
+        console.error('❌ Claude section optimization error:', error.message);
+        throw new Error(`Failed to optimize section with Claude: ${error.message}`);
+    }
+};
