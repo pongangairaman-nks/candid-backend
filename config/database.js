@@ -128,6 +128,7 @@ export const initDatabase = async () => {
         company_url TEXT,
         job_url TEXT,
         job_portal VARCHAR(100),
+        job_description TEXT,
         status VARCHAR(50) DEFAULT 'applied',
         applied_date DATE,
         interview_date DATE,
@@ -136,6 +137,10 @@ export const initDatabase = async () => {
         cover_letter_id INTEGER REFERENCES cover_letters(id) ON DELETE SET NULL,
         resume_pdf_url TEXT,
         cover_letter_pdf_url TEXT,
+        generated_resume_latex TEXT,
+        generated_cover_letter_latex TEXT,
+        resume_prompt TEXT,
+        cover_letter_prompt TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -147,6 +152,17 @@ export const initDatabase = async () => {
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status);
+    `);
+
+    // Add missing columns if they don't exist (migration for existing databases)
+    await client.query(`
+      ALTER TABLE job_applications
+      ADD COLUMN IF NOT EXISTS job_description TEXT,
+      ADD COLUMN IF NOT EXISTS generated_resume_latex TEXT,
+      ADD COLUMN IF NOT EXISTS generated_cover_letter_latex TEXT,
+      ADD COLUMN IF NOT EXISTS resume_prompt TEXT,
+      ADD COLUMN IF NOT EXISTS cover_letter_prompt TEXT,
+      ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     `);
     
     console.log('✅ Database tables initialized');
