@@ -4,48 +4,6 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const DEFAULT_RESUME_PROMPT = `You are a professional ATS resume optimization engine.
-
-Your task is to rewrite and tailor the provided resume content so it is highly optimized for Applicant Tracking Systems (ATS) and closely aligned with the given job description.
-
-STRICT RULES (MUST FOLLOW):
-
-1. Modify ONLY the textual content of the resume.
-2. DO NOT change, remove, reorder, or add any LaTeX commands, environments, spacing, or formatting structure.
-3. DO NOT introduce new sections or alter section headings.
-4. Keep the resume length suitable for a SINGLE PAGE. Be concise and remove less relevant details if necessary.
-5. Preserve professional tone and factual consistency with the original resume.
-
-OPTIMIZATION GOALS:
-
-• Maximize ATS keyword match with the job description (skills, tools, technologies, responsibilities).
-• Prioritize experience and achievements most relevant to the job description.
-• Rewrite bullet points to include measurable impact (metrics, percentages, scale, outcomes).
-• Use strong action verbs and industry-standard terminology.
-• Ensure skills listed reflect the most relevant technologies from the job description.
-• Improve clarity, brevity, and readability for recruiters and ATS systems.
-
-WHAT YOU MUST NOT DO:
-
-✘ Do NOT modify LaTeX structure, commands, spacing, or formatting.
-✘ Do NOT add markdown symbols like ** or extra styling.
-✘ Do NOT invent fake experience or skills not implied by the original resume.
-✘ Do NOT exceed a one-page resume length — keep descriptions tight and impactful.
-
-OUTPUT REQUIREMENT:
-
-Return ONLY the full updated LaTeX resume code with improved content. Do not include explanations, comments, or additional text outside the LaTeX document.
-`;
-
-const DEFAULT_COVER_LETTER_PROMPT = `You are an expert cover letter writer. Based on the job description and the candidate's master content, write a compelling cover letter that:
-1. Addresses the specific requirements mentioned in the job description
-2. Highlights relevant skills and experiences from the master content
-3. Shows genuine interest in the position and company
-4. Uses a professional yet personable tone
-5. Is concise and impactful (typically 3-4 paragraphs)
-
-Format the output as a LaTeX cover letter template.`;
-
 // Get all job applications for a user
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -61,14 +19,7 @@ router.get('/', authenticateToken, async (req, res) => {
       [userId]
     );
     
-    // Add default prompts if not set
-    const rows = result.rows.map(row => ({
-      ...row,
-      resume_prompt: row.resume_prompt || DEFAULT_RESUME_PROMPT,
-      cover_letter_prompt: row.cover_letter_prompt || DEFAULT_COVER_LETTER_PROMPT,
-    }));
-    
-    res.json(rows);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching job applications:', error);
     res.status(500).json({ error: 'Failed to fetch job applications' });
@@ -91,15 +42,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Job application not found' });
     }
     
-    // Add default prompts if not set
-    const row = result.rows[0];
-    const jobApp = {
-      ...row,
-      resume_prompt: row.resume_prompt || DEFAULT_RESUME_PROMPT,
-      cover_letter_prompt: row.cover_letter_prompt || DEFAULT_COVER_LETTER_PROMPT,
-    };
-    
-    res.json(jobApp);
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching job application:', error);
     res.status(500).json({ error: 'Failed to fetch job application' });
@@ -134,11 +77,11 @@ router.post('/', authenticateToken, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO job_applications 
        (user_id, position, company_name, industry, company_url, job_url, job_portal, 
-        status, applied_date, interview_date, notes, resume_prompt, cover_letter_prompt)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        status, applied_date, interview_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [userId, position, company_name, industry, company_url, job_url, job_portal, 
-       status, appliedDateValue, interviewDateValue, notes, DEFAULT_RESUME_PROMPT, DEFAULT_COVER_LETTER_PROMPT]
+       status, appliedDateValue, interviewDateValue, notes]
     );
 
     res.status(201).json(result.rows[0]);

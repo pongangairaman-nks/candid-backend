@@ -93,6 +93,8 @@ export const initDatabase = async () => {
         generator_model VARCHAR(100) NOT NULL DEFAULT 'claude-opus-4-1-20250805',
         generator_api_key TEXT,
         master_content TEXT,
+        master_resume_prompt TEXT,
+        master_cover_letter_prompt TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -163,6 +165,13 @@ export const initDatabase = async () => {
       ADD COLUMN IF NOT EXISTS resume_prompt TEXT,
       ADD COLUMN IF NOT EXISTS cover_letter_prompt TEXT,
       ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    `);
+
+    // Add master prompt columns to llm_configs if they don't exist
+    await client.query(`
+      ALTER TABLE llm_configs
+      ADD COLUMN IF NOT EXISTS master_resume_prompt TEXT,
+      ADD COLUMN IF NOT EXISTS master_cover_letter_prompt TEXT;
     `);
     
     console.log('✅ Database tables initialized');
