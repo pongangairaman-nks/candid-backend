@@ -1,6 +1,10 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { optimizeSectionWithClaude } from '../services/claudeService.js';
+import { optimizeSectionWithGemini } from '../services/geminiService.js';
+import { optimizeSectionWithOpenAI } from '../services/openaiService.js';
+import { getUserLLMConfig } from './llmConfig.js';
 
 const router = express.Router();
 
@@ -219,6 +223,127 @@ router.get('/master-cover-letter-template', authenticateToken, async (req, res) 
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch master cover letter template',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+// POST /api/resume/optimize - Optimize a section of resume
+router.post('/optimize', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { resumeText, masterDocument, jobDescription, prompt, fullLatexCode } = req.body;
+
+    // Support both resumeText and masterDocument field names
+    const selectedText = resumeText || masterDocument;
+
+    // Validate input
+    if (!selectedText || !selectedText.trim()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Resume text is required',
+      });
+    }
+
+    if (!jobDescription || !jobDescription.trim()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Job description is required',
+      });
+    }
+
+    // Use default prompt if not provided
+    const optimizationPrompt = prompt && prompt.trim() 
+      ? prompt 
+      : 'Optimize this resume section to better match the job description. Improve clarity, impact, and ATS keyword alignment while maintaining the original structure and LaTeX formatting.';
+
+    // Get full LaTeX code if not provided - fetch from master template
+    let fullLatex = fullLatexCode;
+    if (!fullLatex) {
+      const masterResult = await pool.query(
+        `SELECT original_latex FROM resumes WHERE user_id = $1 ORDER BY id ASC LIMIT 1`,
+        [userId]
+      );
+      if (masterResult.rows.length > 0) {
+        fullLatex = masterResult.rows[0].original_latex;
+      }
+    }
+
+    // Get user's LLM configuration
+    const userConfig = await getUserLLMConfig(userId, 'generator');
+    if (!userConfig) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'LLM configuration not found. Please configure your LLM provider in the Configuration page.',
+      });
+    }
+
+    console.log(`🔧 Using generator: ${userConfig.provider} - ${userConfig.model}`);
+
+    let optimizedText;
+
+    // Call appropriate LLM service based on provider
+    if (userConfig.provider === 'claude') {
+      optimizedText = await optimizeSectionWithClaude(
+        selectedText,
+        fullLatex || selectedText,
+        jobDescription,
+        optimizationPrompt,
+        userConfig
+      );
+    } else if (userConfig.provider === 'openai') {
+      optimizedText = await optimizeSectionWithOpenAI(
+        selectedText,
+        fullLatex || selectedText,
+        jobDescription,
+        optimizationPrompt,
+        userConfig
+      );
+    } else if (userConfig.provider === 'gemini') {
+      optimizedText = await optimizeSectionWithGemini(
+        selectedText,
+        fullLatex || selectedText,
+        jobDescription,
+        optimizationPrompt,
+        userConfig
+      );
+    } else {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Unsupported LLM provider',
+      });
+    }
+
+    console.log('✅ Section optimized successfully');
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Section optimized successfully',
+      data: {
+        optimizedLatex: optimizedText,
+      },
+    });
+  } catch (error) {
+    console.error('Resume optimization error:', error.message);
+    
+    // Extract meaningful error message from different error types
+    let errorMessage = 'Failed to optimize resume section';
+    
+    if (error.message && error.message.includes('credit balance')) {
+      errorMessage = 'API credit balance is too low. Please upgrade your API plan.';
+    } else if (error.message && error.message.includes('401')) {
+      errorMessage = 'API authentication failed. Please check your API key configuration.';
+    } else if (error.message && error.message.includes('429')) {
+      errorMessage = 'API rate limit exceeded. Please try again in a few moments.';
+    } else if (error.message && error.message.includes('timeout')) {
+      errorMessage = 'Request timed out. Please try again.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    res.status(500).json({
+      status: 'error',
+      message: errorMessage,
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }

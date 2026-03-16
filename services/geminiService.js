@@ -197,3 +197,98 @@ Please optimize this section to better match the job description while preservin
         throw new Error(`Failed to optimize section with Gemini: ${error.message}`);
     }
 };
+
+/**
+ * Tailor resume using Gemini
+ */
+export const tailorWithGemini = async (originalLatex, analysis, masterResumeText, jobDescription, userConfig = null) => {
+    if (!userConfig || !userConfig.apiKey) {
+        throw new Error('Gemini API key not configured. Please configure your LLM settings in the Configuration page.');
+    }
+
+    const generateContent = getModel(userConfig.apiKey);
+    const model = userConfig.model || 'gemini-2.5-flash';
+
+    const systemPrompt = `You are an expert resume content editor specializing in LaTeX documents. Your ONLY job is to update the written content inside a LaTeX resume template to better match a job description.
+
+CRITICAL RULES:
+1. You MUST preserve the ENTIRE LaTeX structure, commands, packages, and formatting
+2. You MUST NOT add, remove, or modify any LaTeX commands (\\documentclass, \\usepackage, \\begin, \\end, etc.)
+3. You MUST NOT change spacing, margins, or layout commands
+4. You MUST NOT add or remove sections
+5. You MUST ONLY update the actual text content (job titles, descriptions, skills, achievements)
+6. Return ONLY the complete LaTeX document with updated content
+7. Do NOT include any explanations, markdown formatting, or code blocks
+8. Do NOT add comments or notes
+
+You are a CONTENT EDITOR, not a TEMPLATE DESIGNER.`;
+
+    const userPrompt = `I need you to update the content of this LaTeX resume to better match the job description below.
+
+JOB DESCRIPTION:
+${jobDescription}
+
+ROLE FOCUS:
+${analysis.role_focus || 'General alignment with job requirements'}
+
+KEY KEYWORDS TO EMPHASIZE:
+${(analysis.primary_keywords || analysis.keywords || []).join(', ') || 'Key skills from job description'}
+
+SKILLS TO INCORPORATE (if relevant to candidate's background):
+${(analysis.missing_skills || []).join(', ') || 'Additional relevant skills'}
+
+MASTER RESUME CONTENT (for reference):
+${masterResumeText}
+
+${userConfig?.master_content ? `COMPREHENSIVE SKILLS & EXPERIENCE REPOSITORY (additional reference material):
+${userConfig.master_content}
+
+` : ''}ORIGINAL LaTeX TEMPLATE:
+${originalLatex}
+
+INSTRUCTIONS:
+1. Update job descriptions, achievements, and skills to emphasize the keywords: ${(analysis.primary_keywords || analysis.keywords || []).slice(0, 5).join(', ') || 'key skills'}
+2. Reword bullet points to align with the role focus: "${analysis.role_focus || 'job requirements'}"
+3. If the candidate has experience with any of these missing skills, highlight them: ${(analysis.missing_skills || []).slice(0, 3).join(', ') || 'relevant skills'}
+4. Make the content more relevant to this specific job
+5. Keep all changes subtle and professional
+6. DO NOT change the LaTeX structure, commands, or formatting
+7. DO NOT add or remove sections
+
+Return ONLY the updated LaTeX document. No explanations, no markdown, no code blocks - just the raw LaTeX content.`;
+
+    try {
+        const result = await generateContent({
+            model: model,
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        { text: systemPrompt },
+                        { text: userPrompt }
+                    ]
+                }
+            ]
+        });
+
+        let tailoredLatex;
+        if (typeof result.text === 'function') {
+            tailoredLatex = result.text();
+        } else if (result.text) {
+            tailoredLatex = result.text;
+        } else if (result.candidates && result.candidates[0]) {
+            tailoredLatex = result.candidates[0].content.parts[0].text;
+        } else {
+            throw new Error('Unable to extract text from Gemini response');
+        }
+
+        if (!tailoredLatex) {
+            throw new Error('No response from Gemini API');
+        }
+
+        return tailoredLatex;
+    } catch (error) {
+        console.error('❌ Gemini resume tailoring error:', error.message);
+        throw new Error(`Failed to tailor resume with Gemini: ${error.message}`);
+    }
+};

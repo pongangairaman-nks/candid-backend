@@ -1,6 +1,8 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { tailorResumeContent } from '../services/claudeService.js';
+import { tailorWithOpenAI } from '../services/openaiService.js';
+import { tailorWithGemini } from '../services/geminiService.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getUserLLMConfig } from './llmConfig.js';
 
@@ -97,13 +99,33 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
 
         // Call LLM to tailor the resume
         console.log('🤖 Calling LLM for content tailoring...');
-        const tailoredLatex = await tailorResumeContent(
-            resume.original_latex,
-            analysis,
-            resume.master_resume_text,
-            resume.job_description,
-            userConfig
-        );
+        let tailoredLatex;
+        
+        if (userConfig.provider === 'openai') {
+            tailoredLatex = await tailorWithOpenAI(
+                resume.original_latex,
+                analysis,
+                resume.master_resume_text,
+                resume.job_description,
+                userConfig
+            );
+        } else if (userConfig.provider === 'gemini') {
+            tailoredLatex = await tailorWithGemini(
+                resume.original_latex,
+                analysis,
+                resume.master_resume_text,
+                resume.job_description,
+                userConfig
+            );
+        } else {
+            tailoredLatex = await tailorResumeContent(
+                resume.original_latex,
+                analysis,
+                resume.master_resume_text,
+                resume.job_description,
+                userConfig
+            );
+        }
 
         // Save tailored LaTeX to database
         await pool.query(

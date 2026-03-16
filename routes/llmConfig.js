@@ -7,9 +7,14 @@ const router = express.Router();
 // Available models configuration
 const AVAILABLE_MODELS = {
   claude: [
-    { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1 (Recommended)', provider: 'claude' },
-    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'claude' },
-    { id: 'claude-haiku-4-20250805', name: 'Claude Haiku 4', provider: 'claude' },
+    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Cheapest)', provider: 'claude' },
+    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'claude' },
+    { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', provider: 'claude' },
+  ],
+  openai: [
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cheapest)', provider: 'openai' },
+    { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
+    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai' },
   ],
   gemini: [
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Free)', provider: 'gemini' },
@@ -42,11 +47,11 @@ router.get('/config', authenticateToken, async (req, res) => {
     if (result.rows.length === 0) {
       // Return default config if not set
       return res.json({
-        analyzer_provider: 'gemini',
-        analyzer_model: 'gemini-2.5-flash',
+        analyzer_provider: 'claude',
+        analyzer_model: 'claude-3-5-haiku-20241022',
         analyzer_api_key: null,
-        generator_provider: 'claude',
-        generator_model: 'claude-opus-4-1-20250805',
+        generator_provider: 'openai',
+        generator_model: 'gpt-4o-mini',
         generator_api_key: null,
         master_content: null,
         master_resume_prompt: null,
@@ -211,6 +216,7 @@ router.put('/config', authenticateToken, async (req, res) => {
     const {
       master_resume_prompt,
       master_cover_letter_prompt,
+      master_content,
     } = req.body;
 
     // Check if config exists
@@ -220,7 +226,32 @@ router.put('/config', authenticateToken, async (req, res) => {
     );
 
     if (existingConfig.rows.length === 0) {
-      return res.status(400).json({ error: 'No existing configuration found. Please configure LLM providers first.' });
+      // Create a default config with the provided prompts
+      console.log(`📝 Creating default config for user ${userId}`);
+      const result = await pool.query(
+        `INSERT INTO llm_configs 
+         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
+        [
+          userId,
+          'claude',
+          'claude-3-5-haiku-20241022',
+          null,
+          'openai',
+          'gpt-4o-mini',
+          null,
+          master_content || null,
+          master_resume_prompt || null,
+          master_cover_letter_prompt || null,
+        ]
+      );
+
+      console.log(`✅ Default config created for user ${userId}`);
+      return res.json({
+        message: 'Configuration created successfully',
+        config: result.rows[0],
+      });
     }
 
     // Update only the provided fields
@@ -228,10 +259,11 @@ router.put('/config', authenticateToken, async (req, res) => {
       `UPDATE llm_configs 
        SET master_resume_prompt = COALESCE($1, master_resume_prompt),
            master_cover_letter_prompt = COALESCE($2, master_cover_letter_prompt),
+           master_content = COALESCE($3, master_content),
            updated_at = CURRENT_TIMESTAMP 
-       WHERE user_id = $3 
+       WHERE user_id = $4 
        RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
-      [master_resume_prompt || null, master_cover_letter_prompt || null, userId]
+      [master_resume_prompt || null, master_cover_letter_prompt || null, master_content || null, userId]
     );
 
     if (result.rows.length === 0) {
@@ -263,17 +295,25 @@ export const getUserLLMConfig = async (userId, type = 'both') => {
 
     const config = result.rows[0];
 
+    // Helper function to get API key with fallback to environment variables
+    const getApiKey = (provider, configApiKey) => {
+      if (configApiKey) return configApiKey;
+      if (provider === 'claude') return process.env.CLAUDE_API_KEY;
+      if (provider === 'gemini') return process.env.GEMINI_API_KEY;
+      return null;
+    };
+
     if (type === 'analyzer') {
       return {
         provider: config.analyzer_provider,
         model: config.analyzer_model,
-        apiKey: config.analyzer_api_key,
+        apiKey: getApiKey(config.analyzer_provider, config.analyzer_api_key),
       };
     } else if (type === 'generator') {
       return {
         provider: config.generator_provider,
         model: config.generator_model,
-        apiKey: config.generator_api_key,
+        apiKey: getApiKey(config.generator_provider, config.generator_api_key),
         masterContent: config.master_content,
       };
     } else {
@@ -282,12 +322,12 @@ export const getUserLLMConfig = async (userId, type = 'both') => {
         analyzer: {
           provider: config.analyzer_provider,
           model: config.analyzer_model,
-          apiKey: config.analyzer_api_key,
+          apiKey: getApiKey(config.analyzer_provider, config.analyzer_api_key),
         },
         generator: {
           provider: config.generator_provider,
           model: config.generator_model,
-          apiKey: config.generator_api_key,
+          apiKey: getApiKey(config.generator_provider, config.generator_api_key),
           masterContent: config.master_content,
         },
       };
