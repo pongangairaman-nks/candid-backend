@@ -123,19 +123,23 @@ router.post('/compile-latex', async (req, res) => {
 
     } catch (error) {
         console.error('❌ LaTeX compilation error:', error.message);
+        console.error('Full error:', error);
 
         // Provide helpful error messages
         let errorMessage = 'Failed to compile LaTeX';
-        if (error.message.includes('pdflatex')) {
-            errorMessage = 'LaTeX compiler not found. Please ensure pdflatex is installed.';
-        } else if (error.message.includes('compile')) {
-            errorMessage = 'LaTeX compilation failed. There may be syntax errors in the template.';
+        if (error.message.includes('pdflatex') || error.message.includes('ENOENT') || error.message.includes('not found')) {
+            errorMessage = 'LaTeX compiler (pdflatex) is not installed on this system. To use preview, please install TeX Live or MiKTeX.';
+        } else if (error.message.includes('compile') || error.message.includes('Error')) {
+            errorMessage = 'LaTeX compilation failed. There may be syntax errors in your resume template. Please check the LaTeX code.';
+        } else if (error.message.includes('timeout')) {
+            errorMessage = 'LaTeX compilation timed out. The document may be too complex.';
         }
 
         res.status(500).json({
             status: 'error',
             message: errorMessage,
-            error: error.message
+            error: error.message,
+            details: 'pdflatex not found - install TeX Live (Linux/Mac) or MiKTeX (Windows) to enable PDF preview'
         });
     }
 });

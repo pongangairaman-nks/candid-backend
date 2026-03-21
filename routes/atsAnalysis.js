@@ -1,7 +1,9 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { calculateATSScore, formatATSResponse } from '../services/atsService.js';
-import { analyzeJobDescription } from '../services/geminiService.js';
+import { analyzeJobDescription as analyzeWithGemini } from '../services/geminiService.js';
+import { analyzeJobDescription as analyzeWithClaude } from '../services/claudeService.js';
+import { analyzeJobDescription as analyzeWithOpenAI } from '../services/openaiService.js';
 import { getUserLLMConfig } from './llmConfig.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -70,8 +72,11 @@ router.post('/analysis', authenticateToken, async (req, res) => {
       jobAnalysis = JSON.parse(resume.analysis_json);
       console.log('✅ Using cached job analysis');
     } else {
-      console.log('🤖 Analyzing job description with Gemini...');
+      console.log(`📊 Fetching LLM config for user ${userId}...`);
       const userConfig = await getUserLLMConfig(userId, 'analyzer');
+      
+      console.log('🔍 [DEBUG] userConfig received:', JSON.stringify(userConfig, null, 2));
+      
       if (!userConfig) {
         return res.status(400).json({
           status: 'error',
@@ -80,13 +85,55 @@ router.post('/analysis', authenticateToken, async (req, res) => {
       }
 
       try {
-        jobAnalysis = await analyzeJobDescription(jd, resume.master_resume_text, userConfig);
-        console.log('✅ Job analysis received from Gemini');
+        const provider = userConfig.provider || 'gemini';
+        const analyzerConfig = {
+          apiKey: userConfig.apiKey,
+          model: userConfig.model,
+        };
+
+        // Validate model before making API call
+        const validModels = {
+          claude: ['claude-3-5-sonnet-latest', 'claude-3-haiku-20240307', 'claude-3-opus-20240229'],
+          openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
+          gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-flash'],
+        };
+
+        if (!validModels[provider]?.includes(analyzerConfig.model)) {
+          console.error(`❌ Invalid model for provider ${provider}: ${analyzerConfig.model}`);
+          return res.status(400).json({
+            status: 'error',
+            message: `Invalid model "${analyzerConfig.model}" for provider "${provider}". Valid models: ${validModels[provider]?.join(', ') || 'none'}`,
+          });
+        }
+
+        console.log(`🤖 Analyzing job description with ${provider}...`);
+        console.log(`📋 Config - Provider: ${provider}, Model: ${analyzerConfig.model}, Has API Key: ${!!analyzerConfig.apiKey}`);
+        console.log(`🔍 [DEBUG] Full analyzerConfig:`, JSON.stringify({ 
+          provider, 
+          model: analyzerConfig.model, 
+          hasApiKey: !!analyzerConfig.apiKey,
+          apiKeyLength: analyzerConfig.apiKey ? analyzerConfig.apiKey.length : 0
+        }, null, 2));
+
+        if (provider === 'claude') {
+          console.log('🔍 [DEBUG] Calling analyzeWithClaude with config:', { model: analyzerConfig.model, hasApiKey: !!analyzerConfig.apiKey });
+          jobAnalysis = await analyzeWithClaude(jd, resume.master_resume_text, analyzerConfig);
+          console.log('✅ Job analysis received from Claude');
+        } else if (provider === 'openai') {
+          console.log('🔍 [DEBUG] Calling analyzeWithOpenAI with config:', { model: analyzerConfig.model, hasApiKey: !!analyzerConfig.apiKey });
+          jobAnalysis = await analyzeWithOpenAI(jd, resume.master_resume_text, analyzerConfig);
+          console.log('✅ Job analysis received from OpenAI');
+        } else {
+          console.log('🔍 [DEBUG] Calling analyzeWithGemini with config:', { model: analyzerConfig.model, hasApiKey: !!analyzerConfig.apiKey });
+          jobAnalysis = await analyzeWithGemini(jd, resume.master_resume_text, analyzerConfig);
+          console.log('✅ Job analysis received from Gemini');
+        }
       } catch (analysisError) {
-        console.error('❌ Gemini analysis failed:', analysisError.message);
+        console.error(`❌ Analysis failed: ${analysisError.message}`);
+        console.error('🔍 [DEBUG] Full error:', analysisError);
         return res.status(500).json({
           status: 'error',
-          message: 'Failed to analyze job description with Gemini',
+          message: `Failed to analyze job description: ${analysisError.message}`,
           error: analysisError.message,
         });
       }

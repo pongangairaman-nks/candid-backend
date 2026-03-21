@@ -85,6 +85,7 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
         }
 
         console.log(`🔧 Using generator: ${fullConfig.generator.provider} - ${fullConfig.generator.model}`);
+        console.log('📊 Tailoring with full resume context for best ATS quality...');
 
         // Prepare config for tailorResumeContent with both generator and analyzer info
         const userConfig = {
@@ -97,8 +98,8 @@ router.post('/generate-resume', authenticateToken, async (req, res) => {
             master_content: fullConfig.generator.masterContent
         };
 
-        // Call LLM to tailor the resume
-        console.log('🤖 Calling LLM for content tailoring...');
+        // Call LLM to tailor the resume with FULL context for best quality
+        console.log('🤖 Calling LLM for content tailoring with full resume context...');
         let tailoredLatex;
         
         if (userConfig.provider === 'openai') {

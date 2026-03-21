@@ -7,9 +7,9 @@ const router = express.Router();
 // Available models configuration
 const AVAILABLE_MODELS = {
   claude: [
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Cheapest)', provider: 'claude' },
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'claude' },
-    { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', provider: 'claude' },
+    { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet (Recommended)', provider: 'claude' },
+    { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Cheap & Fast)', provider: 'claude' },
+    { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Best Quality)', provider: 'claude' },
   ],
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cheapest)', provider: 'openai' },
@@ -24,13 +24,189 @@ const AVAILABLE_MODELS = {
   ],
 };
 
-// Get available models
+// Get available providers
+router.get('/providers', (req, res) => {
+  try {
+    const providers = [
+      { id: 'claude', name: 'Claude (Anthropic)', provider: 'claude' },
+      { id: 'openai', name: 'OpenAI', provider: 'openai' },
+      { id: 'gemini', name: 'Gemini (Google)', provider: 'gemini' },
+    ];
+    res.json(providers);
+  } catch (error) {
+    console.error('Error fetching providers:', error);
+    res.status(500).json({ error: 'Failed to fetch providers' });
+  }
+});
+
+// Get available models (static fallback)
 router.get('/models', (req, res) => {
   try {
     res.json(AVAILABLE_MODELS);
   } catch (error) {
     console.error('Error fetching models:', error);
     res.status(500).json({ error: 'Failed to fetch models' });
+  }
+});
+
+// Get models for a specific provider (real-time from API or cached fallback)
+router.get('/models/:provider', async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const apiKey = req.query.apiKey;
+
+    console.log(`🔍 Fetching models for provider: ${provider}`);
+
+    if (provider === 'claude') {
+      if (!apiKey) {
+        console.warn('⚠️ No Claude API key provided, using cached models');
+        const models = AVAILABLE_MODELS['claude'] || [];
+        return res.json({ 
+          models, 
+          count: models.length,
+          provider: 'claude',
+          source: 'cached'
+        });
+      }
+
+      try {
+        console.log('🔍 Fetching Claude models from Anthropic REST API...');
+        const response = await fetch('https://api.anthropic.com/v1/models', {
+          method: 'GET',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        });
+
+        if (!response.ok) {
+          console.warn(`⚠️ Anthropic API returned ${response.status}, using cached models`);
+          const models = AVAILABLE_MODELS['claude'] || [];
+          return res.json({ 
+            models, 
+            count: models.length,
+            provider: 'claude',
+            source: 'cached',
+            warning: `API returned ${response.status}`
+          });
+        }
+
+        const data = await response.json();
+        const models = [];
+
+        if (data.data && Array.isArray(data.data)) {
+          for (const modelInfo of data.data) {
+            if (modelInfo.id && modelInfo.id.startsWith('claude')) {
+              models.push({
+                id: modelInfo.id,
+                name: modelInfo.display_name || modelInfo.id,
+                provider: 'claude',
+                created_at: modelInfo.created_at,
+                max_input_tokens: modelInfo.max_input_tokens,
+                max_tokens: modelInfo.max_tokens,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) {
+          console.warn('⚠️ No Claude models returned from API, using cached models');
+          const cachedModels = AVAILABLE_MODELS['claude'] || [];
+          return res.json({ 
+            models: cachedModels, 
+            count: cachedModels.length,
+            provider: 'claude',
+            source: 'cached'
+          });
+        }
+
+        console.log(`✅ Found ${models.length} Claude models from API`);
+        return res.json({ 
+          models, 
+          count: models.length,
+          provider: 'claude',
+          source: 'api'
+        });
+      } catch (apiError) {
+        console.error('❌ Error fetching from Anthropic API:', apiError.message);
+        const models = AVAILABLE_MODELS['claude'] || [];
+        return res.json({ 
+          models, 
+          count: models.length,
+          provider: 'claude',
+          source: 'cached',
+          error: apiError.message
+        });
+      }
+    } else {
+      // Return static models for other providers
+      const models = AVAILABLE_MODELS[provider] || [];
+      
+      if (models.length === 0) {
+        return res.status(404).json({ 
+          error: `No models found for provider: ${provider}`,
+          models: [] 
+        });
+      }
+
+      console.log(`✅ Found ${models.length} ${provider} models`);
+      return res.json({ 
+        models, 
+        count: models.length,
+        provider: provider,
+        source: 'cached'
+      });
+    }
+  } catch (error) {
+    console.error(`❌ Error fetching models for provider:`, error.message);
+    res.status(500).json({ 
+      error: `Failed to fetch models: ${error.message}`,
+      models: [] 
+    });
+  }
+});
+
+// Get Claude models dynamically from Anthropic API
+router.get('/models/claude', async (req, res) => {
+  try {
+    const apiKey = req.query.apiKey || process.env.CLAUDE_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('⚠️ No Claude API key provided');
+      return res.status(400).json({ 
+        error: 'Claude API key is required to fetch available models',
+        models: [] 
+      });
+    }
+
+    const client = new Anthropic({ apiKey });
+    const models = [];
+
+    console.log('🔍 Fetching Claude models from Anthropic API...');
+    
+    // Fetch all available models
+    for await (const modelInfo of client.models.list()) {
+      // Filter for Claude models only
+      if (modelInfo.id.startsWith('claude')) {
+        models.push({
+          id: modelInfo.id,
+          name: modelInfo.display_name || modelInfo.id,
+          provider: 'claude',
+          created_at: modelInfo.created_at,
+          max_input_tokens: modelInfo.max_input_tokens,
+          max_tokens: modelInfo.max_tokens,
+        });
+      }
+    }
+
+    console.log(`✅ Found ${models.length} Claude models`);
+    res.json({ models, count: models.length });
+  } catch (error) {
+    console.error('❌ Error fetching Claude models:', error.message);
+    res.status(500).json({ 
+      error: `Failed to fetch Claude models: ${error.message}`,
+      models: [] 
+    });
   }
 });
 
@@ -299,6 +475,7 @@ export const getUserLLMConfig = async (userId, type = 'both') => {
     const getApiKey = (provider, configApiKey) => {
       if (configApiKey) return configApiKey;
       if (provider === 'claude') return process.env.CLAUDE_API_KEY;
+      if (provider === 'openai') return process.env.OPENAI_API_KEY;
       if (provider === 'gemini') return process.env.GEMINI_API_KEY;
       return null;
     };

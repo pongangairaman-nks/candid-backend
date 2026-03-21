@@ -1,9 +1,9 @@
 import express from 'express';
 import pool from '../config/database.js';
-import { authenticateToken } from '../middleware/auth.js';
 import { optimizeSectionWithClaude } from '../services/claudeService.js';
 import { optimizeSectionWithGemini } from '../services/geminiService.js';
 import { optimizeSectionWithOpenAI } from '../services/openaiService.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { getUserLLMConfig } from './llmConfig.js';
 
 const router = express.Router();
@@ -279,10 +279,11 @@ router.post('/optimize', authenticateToken, async (req, res) => {
     }
 
     console.log(`🔧 Using generator: ${userConfig.provider} - ${userConfig.model}`);
+    console.log('📊 Optimizing with full resume context for best ATS quality...');
 
     let optimizedText;
 
-    // Call appropriate LLM service based on provider
+    // Call appropriate LLM service based on provider with FULL resume context for best quality
     if (userConfig.provider === 'claude') {
       optimizedText = await optimizeSectionWithClaude(
         selectedText,

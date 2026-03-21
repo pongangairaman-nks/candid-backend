@@ -66,6 +66,8 @@ export const initDatabase = async () => {
         pdf_url TEXT,
         ats_score INTEGER,
         ats_analysis JSONB,
+        resume_chunks JSONB,
+        jd_summary TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

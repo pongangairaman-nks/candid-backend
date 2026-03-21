@@ -190,6 +190,145 @@ Update the resume content to emphasize these keywords and align with the role fo
 };
 
 /**
+ * Analyze job description using Claude
+ * @param {string} jobDescription - The job description text
+ * @param {string} resumeText - The master resume text
+ * @param {Object} userConfig - User's LLM configuration (model, apiKey)
+ * @returns {Promise<Object>} Analysis results with keywords, missing_skills, and role_focus
+ */
+export const analyzeJobDescription = async (jobDescription, resumeText, userConfig = null) => {
+    try {
+        if (!userConfig || !userConfig.apiKey) {
+            throw new Error('Claude API key not configured. Please configure your LLM settings in the Configuration page.');
+        }
+
+        const validClaudeModels = [
+            'claude-3-5-sonnet-latest',
+            'claude-3-haiku-20240307',
+            'claude-3-opus-20240229',
+        ];
+
+        const model = userConfig.model || 'claude-3-5-sonnet-latest';
+        
+        if (!validClaudeModels.includes(model)) {
+            throw new Error(`Invalid Claude model: ${model}. Valid models are: ${validClaudeModels.join(', ')}`);
+        }
+
+        console.log('🔍 [DEBUG] Claude analyzeJobDescription called with config:', {
+            hasApiKey: !!userConfig.apiKey,
+            apiKeyLength: userConfig.apiKey?.length,
+            model: model,
+        });
+
+        const client = new Anthropic({ apiKey: userConfig.apiKey });
+        
+        console.log('🔍 [DEBUG] Using Claude model:', model);
+
+        const systemPrompt = `You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist. Your task is to analyze a job description and compare it with a resume to extract critical information for ATS scoring.
+
+Return a valid JSON object with the following structure:
+{
+  "primary_keywords": ["keyword1", "keyword2", ...],
+  "secondary_keywords": ["keyword1", "keyword2", ...],
+  "missing_skills": ["skill1", "skill2", ...],
+  "matching_skills": ["skill1", "skill2", ...],
+  "role_focus": "Brief description of the role's primary focus",
+  "seniority_level": "entry|mid|senior|lead|manager|director",
+  "experience_gaps": ["gap1", "gap2", ...],
+  "ats_optimization_tips": ["tip1", "tip2", ...]
+}
+
+IMPORTANT: Return ONLY valid JSON, no markdown, no code blocks, no explanations.`;
+
+        const userPrompt = `Analyze this job description and resume to extract ATS-critical information.
+
+JOB DESCRIPTION:
+${jobDescription}
+
+RESUME:
+${resumeText}
+
+Extract:
+1. Primary keywords (must-have skills/requirements) - 5-10 items
+2. Secondary keywords (nice-to-have skills) - 5-10 items
+3. Missing skills (in JD but not in resume) - 5-10 items
+4. Matching skills (in both JD and resume) - 5-10 items
+5. Role focus (main purpose of the role in 1-2 sentences)
+6. Seniority level (entry, mid, senior, lead, manager, or director)
+7. Experience gaps (missing experience areas)
+8. ATS optimization tips (how to improve resume for this JD)
+
+Return ONLY valid JSON.`;
+
+        const message = await client.messages.create({
+            model: model,
+            max_tokens: 2000,
+            temperature: 0.3,
+            system: systemPrompt,
+            messages: [
+                {
+                    role: 'user',
+                    content: userPrompt,
+                },
+            ],
+        });
+
+        const responseText = message.content[0].text;
+
+        // Parse JSON response
+        let analysis;
+        try {
+            // Remove markdown code blocks if present
+            let cleanedText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            
+            // Extract JSON if wrapped in other content
+            if (!cleanedText.startsWith('{')) {
+                const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    cleanedText = jsonMatch[0];
+                }
+            }
+            
+            analysis = JSON.parse(cleanedText);
+        } catch (parseError) {
+            console.error('JSON parse error:', parseError.message);
+            console.error('Raw response:', responseText.substring(0, 500));
+            throw new Error('Failed to parse Claude response as JSON');
+        }
+
+        // Validate response structure
+        if (!analysis.primary_keywords || !analysis.missing_skills || !analysis.role_focus) {
+            console.error('Invalid structure. Received keys:', Object.keys(analysis));
+            throw new Error('Invalid analysis structure from Claude');
+        }
+
+        // Ensure all required arrays exist and are arrays
+        const sanitizedAnalysis = {
+            primary_keywords: Array.isArray(analysis.primary_keywords) ? analysis.primary_keywords : [],
+            secondary_keywords: Array.isArray(analysis.secondary_keywords) ? analysis.secondary_keywords : [],
+            missing_skills: Array.isArray(analysis.missing_skills) ? analysis.missing_skills : [],
+            matching_skills: Array.isArray(analysis.matching_skills) ? analysis.matching_skills : [],
+            experience_gaps: Array.isArray(analysis.experience_gaps) ? analysis.experience_gaps : [],
+            role_focus: String(analysis.role_focus || ''),
+            seniority_level: String(analysis.seniority_level || 'mid'),
+            ats_optimization_tips: Array.isArray(analysis.ats_optimization_tips) ? analysis.ats_optimization_tips : [],
+        };
+
+        console.log('✅ Claude analysis complete');
+        console.log(`  Primary keywords: ${sanitizedAnalysis.primary_keywords.length}`);
+        console.log(`  Secondary keywords: ${sanitizedAnalysis.secondary_keywords.length}`);
+        console.log(`  Missing skills: ${sanitizedAnalysis.missing_skills.length}`);
+        console.log(`  Role focus: ${sanitizedAnalysis.role_focus.substring(0, 50)}...`);
+
+        return sanitizedAnalysis;
+
+    } catch (error) {
+        console.error('❌ Claude API error:', error.message);
+        throw new Error(`Failed to analyze job description: ${error.message}`);
+    }
+};
+
+/**
  * Test Claude API connection
  */
 export const testClaudeConnection = async () => {
