@@ -173,7 +173,8 @@ export const initDatabase = async () => {
     await client.query(`
       ALTER TABLE llm_configs
       ADD COLUMN IF NOT EXISTS master_resume_prompt TEXT,
-      ADD COLUMN IF NOT EXISTS master_cover_letter_prompt TEXT;
+      ADD COLUMN IF NOT EXISTS master_cover_letter_prompt TEXT,
+      ADD COLUMN IF NOT EXISTS use_latex_template BOOLEAN DEFAULT TRUE;
     `);
     
     console.log('✅ Database tables initialized');

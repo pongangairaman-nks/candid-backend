@@ -460,7 +460,7 @@ router.get('/config', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     
     const result = await pool.query(
-      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active FROM llm_configs WHERE user_id = $1',
+      'SELECT analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active FROM llm_configs WHERE user_id = $1',
       [userId]
     );
 
@@ -476,6 +476,7 @@ router.get('/config', authenticateToken, async (req, res) => {
         master_content: null,
         master_resume_prompt: null,
         master_cover_letter_prompt: null,
+        use_latex_template: true,
         is_active: true,
       });
     }
@@ -501,6 +502,7 @@ router.post('/config', authenticateToken, async (req, res) => {
       master_content,
       master_resume_prompt,
       master_cover_letter_prompt,
+      use_latex_template,
     } = req.body;
 
     // Validate master_content length if provided (max ~50KB for 2-3 pages)
@@ -515,7 +517,7 @@ router.post('/config', authenticateToken, async (req, res) => {
     );
 
     // If only master_content or master prompts are provided, do a partial update
-    const isPartialUpdate = !analyzer_provider && !analyzer_model && !analyzer_api_key && !generator_provider && !generator_model && !generator_api_key && (master_content || master_resume_prompt || master_cover_letter_prompt);
+    const isPartialUpdate = !analyzer_provider && !analyzer_model && !analyzer_api_key && !generator_provider && !generator_model && !generator_api_key && (master_content || master_resume_prompt || master_cover_letter_prompt || use_latex_template !== undefined);
 
     if (isPartialUpdate) {
       // Partial update - only update master_content and/or master prompts
@@ -531,10 +533,11 @@ router.post('/config', authenticateToken, async (req, res) => {
          SET master_content = COALESCE($1, master_content),
              master_resume_prompt = COALESCE($2, master_resume_prompt),
              master_cover_letter_prompt = COALESCE($3, master_cover_letter_prompt),
+             use_latex_template = COALESCE($4, use_latex_template),
              updated_at = CURRENT_TIMESTAMP 
-         WHERE user_id = $4 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
-        [master_content || null, master_resume_prompt || null, master_cover_letter_prompt || null, userId]
+         WHERE user_id = $5 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active`,
+        [master_content || null, master_resume_prompt || null, master_cover_letter_prompt || null, use_latex_template !== undefined ? use_latex_template : null, userId]
       );
 
       if (result.rows.length === 0) {
@@ -582,35 +585,65 @@ router.post('/config', authenticateToken, async (req, res) => {
 
     let result;
     if (existingConfig.rows.length > 0) {
-      // Update existing config
-      result = await pool.query(
-        `UPDATE llm_configs 
+      // Update existing config - preserve master prompts if not provided
+      // Build dynamic update query based on what fields are provided
+      let updateQuery = `UPDATE llm_configs 
          SET analyzer_provider = $1, analyzer_model = $2, analyzer_api_key = $3,
-             generator_provider = $4, generator_model = $5, generator_api_key = $6,
-             master_content = $7, master_resume_prompt = $8, master_cover_letter_prompt = $9,
-             updated_at = CURRENT_TIMESTAMP 
-         WHERE user_id = $10 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
-        [
-          analyzer_provider,
-          analyzer_model,
-          analyzer_api_key,
-          generator_provider,
-          generator_model,
-          generator_api_key,
-          master_content || null,
-          master_resume_prompt || null,
-          master_cover_letter_prompt || null,
-          userId,
-        ]
-      );
+             generator_provider = $4, generator_model = $5, generator_api_key = $6`;
+      
+      const updateFields = [
+        analyzer_provider,
+        analyzer_model,
+        analyzer_api_key,
+        generator_provider,
+        generator_model,
+        generator_api_key,
+      ];
+      
+      let paramIndex = 7;
+      
+      // Only update master_content if explicitly provided
+      if (master_content !== undefined) {
+        updateQuery += `, master_content = $${paramIndex}`;
+        updateFields.push(master_content);
+        paramIndex++;
+      }
+      
+      // Only update master_resume_prompt if explicitly provided
+      if (master_resume_prompt !== undefined) {
+        updateQuery += `, master_resume_prompt = $${paramIndex}`;
+        updateFields.push(master_resume_prompt);
+        paramIndex++;
+      }
+      
+      // Only update master_cover_letter_prompt if explicitly provided
+      if (master_cover_letter_prompt !== undefined) {
+        updateQuery += `, master_cover_letter_prompt = $${paramIndex}`;
+        updateFields.push(master_cover_letter_prompt);
+        paramIndex++;
+      }
+      
+      // Only update use_latex_template if explicitly provided
+      if (use_latex_template !== undefined) {
+        updateQuery += `, use_latex_template = $${paramIndex}`;
+        updateFields.push(use_latex_template);
+        paramIndex++;
+      }
+      
+      updateQuery += `, updated_at = CURRENT_TIMESTAMP 
+         WHERE user_id = $${paramIndex} 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active`;
+      
+      updateFields.push(userId);
+
+      result = await pool.query(updateQuery, updateFields);
     } else {
       // Create new config
       result = await pool.query(
         `INSERT INTO llm_configs 
-         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
+         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active`,
         [
           userId,
           analyzer_provider,
@@ -622,6 +655,7 @@ router.post('/config', authenticateToken, async (req, res) => {
           master_content || null,
           master_resume_prompt || null,
           master_cover_letter_prompt || null,
+          use_latex_template !== undefined ? use_latex_template : true,
         ]
       );
     }
