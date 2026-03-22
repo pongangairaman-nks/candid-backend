@@ -44,11 +44,15 @@ ${selectedText}
 Please optimize this section to better match the job description while preserving all LaTeX formatting.`;
 
     try {
-        const message = await client.messages.create({
+        const message = await client.chat.completions.create({
             model: userConfig.model || 'gpt-4o-mini',
             max_tokens: 2048,
-            system: systemPrompt,
+            temperature: 0.7,
             messages: [
+                {
+                    role: 'system',
+                    content: systemPrompt,
+                },
                 {
                     role: 'user',
                     content: userMessage,
@@ -56,7 +60,7 @@ Please optimize this section to better match the job description while preservin
             ],
         });
 
-        const optimizedText = message.content[0].type === 'text' ? message.content[0].text : '';
+        const optimizedText = message.choices[0].message.content;
 
         if (!optimizedText) {
             throw new Error('No response from OpenAI API');
@@ -126,8 +130,11 @@ Return ONLY valid JSON.`;
                 model: model,
                 max_tokens: 2000,
                 temperature: 0.3,
-                system: systemPrompt,
                 messages: [
+                    {
+                        role: 'system',
+                        content: systemPrompt,
+                    },
                     {
                         role: 'user',
                         content: userPrompt,
@@ -255,11 +262,15 @@ INSTRUCTIONS:
 Return ONLY the updated LaTeX document. No explanations, no markdown, no code blocks - just the raw LaTeX content.`;
 
     try {
-        const message = await client.messages.create({
+        const message = await client.chat.completions.create({
             model: userConfig.model || 'gpt-4o-mini',
             max_tokens: 4096,
-            system: systemPrompt,
+            temperature: 0.7,
             messages: [
+                {
+                    role: 'system',
+                    content: systemPrompt,
+                },
                 {
                     role: 'user',
                     content: userPrompt,
@@ -267,7 +278,7 @@ Return ONLY the updated LaTeX document. No explanations, no markdown, no code bl
             ],
         });
 
-        const tailoredLatex = message.content[0].type === 'text' ? message.content[0].text : '';
+        const tailoredLatex = message.choices[0].message.content;
 
         if (!tailoredLatex) {
             throw new Error('No response from OpenAI API');

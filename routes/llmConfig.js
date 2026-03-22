@@ -1,8 +1,24 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import OpenAI from 'openai';
 
 const router = express.Router();
+
+// Curated model registry - only chat-capable models
+const ALLOWED_OPENAI_MODELS = [
+  'gpt-4o-mini',
+  'gpt-4o',
+  'gpt-4-turbo',
+  'gpt-4',
+];
+
+const OPENAI_MODEL_LABELS = {
+  'gpt-4o-mini': 'GPT-4o Mini (Fast & Cheap)',
+  'gpt-4o': 'GPT-4o (Balanced)',
+  'gpt-4-turbo': 'GPT-4 Turbo (High Quality)',
+  'gpt-4': 'GPT-4 (Legacy)',
+};
 
 // Available models configuration
 const AVAILABLE_MODELS = {
@@ -12,9 +28,9 @@ const AVAILABLE_MODELS = {
     { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Best Quality)', provider: 'claude' },
   ],
   openai: [
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cheapest)', provider: 'openai' },
-    { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast & Cheap)', provider: 'openai' },
+    { id: 'gpt-4o', name: 'GPT-4o (Balanced)', provider: 'openai' },
+    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo (High Quality)', provider: 'openai' },
   ],
   gemini: [
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Free)', provider: 'gemini' },
@@ -138,6 +154,67 @@ router.get('/models/:provider', async (req, res) => {
           error: apiError.message
         });
       }
+    } else if (provider === 'openai') {
+      if (!apiKey) {
+        console.warn('⚠️ No OpenAI API key provided, using cached models');
+        const models = AVAILABLE_MODELS['openai'] || [];
+        return res.json({ 
+          models, 
+          count: models.length,
+          provider: 'openai',
+          source: 'cached'
+        });
+      }
+
+      try {
+        console.log('🔍 Fetching OpenAI models from OpenAI API...');
+        const client = new OpenAI({ apiKey });
+        const response = await client.models.list();
+        const models = [];
+
+        if (response.data && Array.isArray(response.data)) {
+          for (const modelInfo of response.data) {
+            // Filter only allowed chat models
+            if (modelInfo.id && ALLOWED_OPENAI_MODELS.includes(modelInfo.id)) {
+              models.push({
+                id: modelInfo.id,
+                name: OPENAI_MODEL_LABELS[modelInfo.id] || modelInfo.id,
+                provider: 'openai',
+                created_at: modelInfo.created_at,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) {
+          console.warn('⚠️ No OpenAI chat models found, using cached models');
+          const cachedModels = AVAILABLE_MODELS['openai'] || [];
+          return res.json({ 
+            models: cachedModels, 
+            count: cachedModels.length,
+            provider: 'openai',
+            source: 'cached'
+          });
+        }
+
+        console.log(`✅ Found ${models.length} OpenAI models from API`);
+        return res.json({ 
+          models, 
+          count: models.length,
+          provider: 'openai',
+          source: 'api'
+        });
+      } catch (apiError) {
+        console.error('❌ Error fetching from OpenAI API:', apiError.message);
+        const models = AVAILABLE_MODELS['openai'] || [];
+        return res.json({ 
+          models, 
+          count: models.length,
+          provider: 'openai',
+          source: 'cached',
+          error: apiError.message
+        });
+      }
     } else {
       // Return static models for other providers
       const models = AVAILABLE_MODELS[provider] || [];
@@ -206,6 +283,173 @@ router.get('/models/claude', async (req, res) => {
     res.status(500).json({ 
       error: `Failed to fetch Claude models: ${error.message}`,
       models: [] 
+    });
+  }
+});
+
+// Get available models for a provider using backend environment API keys
+router.get('/models-for-user/:provider', authenticateToken, async (req, res) => {
+  try {
+    const { provider } = req.params;
+
+    console.log(`🔍 Fetching ${provider} models using backend environment API key`);
+
+    // Get API key from environment variables
+    let apiKey = '';
+    if (provider === 'claude') {
+      apiKey = process.env.CLAUDE_API_KEY;
+    } else if (provider === 'openai') {
+      apiKey = process.env.OPENAI_API_KEY;
+    } else if (provider === 'gemini') {
+      apiKey = process.env.GEMINI_API_KEY;
+    }
+
+    if (!apiKey) {
+      console.warn(`⚠️ No API key found in environment for ${provider}`);
+      const models = AVAILABLE_MODELS[provider] || [];
+      return res.json({
+        models,
+        count: models.length,
+        provider,
+        source: 'cached',
+        warning: `No API key configured for ${provider}, using cached models`
+      });
+    }
+
+    if (provider === 'claude') {
+      try {
+        console.log('🔍 Fetching Claude models from Anthropic REST API...');
+        const response = await fetch('https://api.anthropic.com/v1/models', {
+          method: 'GET',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        });
+
+        if (!response.ok) {
+          console.warn(`⚠️ Anthropic API returned ${response.status}, using cached models`);
+          const models = AVAILABLE_MODELS['claude'] || [];
+          return res.json({
+            models,
+            count: models.length,
+            provider: 'claude',
+            source: 'cached',
+            warning: `API returned ${response.status}`
+          });
+        }
+
+        const data = await response.json();
+        const models = [];
+
+        if (data.data && Array.isArray(data.data)) {
+          for (const modelInfo of data.data) {
+            if (modelInfo.id && modelInfo.id.startsWith('claude')) {
+              models.push({
+                id: modelInfo.id,
+                name: modelInfo.display_name || modelInfo.id,
+                provider: 'claude',
+                created_at: modelInfo.created_at,
+                max_input_tokens: modelInfo.max_input_tokens,
+                max_tokens: modelInfo.max_tokens,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) {
+          console.warn('⚠️ No Claude models returned from API, using cached models');
+          const cachedModels = AVAILABLE_MODELS['claude'] || [];
+          return res.json({
+            models: cachedModels,
+            count: cachedModels.length,
+            provider: 'claude',
+            source: 'cached'
+          });
+        }
+
+        console.log(`✅ Found ${models.length} Claude models from API`);
+        return res.json({
+          models,
+          count: models.length,
+          provider: 'claude',
+          source: 'api'
+        });
+      } catch (apiError) {
+        console.error('❌ Error fetching from Anthropic API:', apiError.message);
+        const models = AVAILABLE_MODELS['claude'] || [];
+        return res.json({
+          models,
+          count: models.length,
+          provider: 'claude',
+          source: 'cached',
+          error: apiError.message
+        });
+      }
+    } else if (provider === 'openai') {
+      try {
+        console.log('🔍 Fetching OpenAI models from OpenAI API...');
+        const client = new OpenAI({ apiKey });
+        const response = await client.models.list();
+        const models = [];
+
+        if (response.data && Array.isArray(response.data)) {
+          for (const modelInfo of response.data) {
+            if (modelInfo.id && ALLOWED_OPENAI_MODELS.includes(modelInfo.id)) {
+              models.push({
+                id: modelInfo.id,
+                name: OPENAI_MODEL_LABELS[modelInfo.id] || modelInfo.id,
+                provider: 'openai',
+                created_at: modelInfo.created_at,
+              });
+            }
+          }
+        }
+
+        if (models.length === 0) {
+          console.warn('⚠️ No OpenAI chat models found, using cached models');
+          const cachedModels = AVAILABLE_MODELS['openai'] || [];
+          return res.json({
+            models: cachedModels,
+            count: cachedModels.length,
+            provider: 'openai',
+            source: 'cached'
+          });
+        }
+
+        console.log(`✅ Found ${models.length} OpenAI models from API`);
+        return res.json({
+          models,
+          count: models.length,
+          provider: 'openai',
+          source: 'api'
+        });
+      } catch (apiError) {
+        console.error('❌ Error fetching from OpenAI API:', apiError.message);
+        const models = AVAILABLE_MODELS['openai'] || [];
+        return res.json({
+          models,
+          count: models.length,
+          provider: 'openai',
+          source: 'cached',
+          error: apiError.message
+        });
+      }
+    } else {
+      // Return static models for other providers
+      const models = AVAILABLE_MODELS[provider] || [];
+      return res.json({
+        models,
+        count: models.length,
+        provider,
+        source: 'cached'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error fetching models for user:', error.message);
+    res.status(500).json({
+      error: `Failed to fetch models: ${error.message}`,
+      models: []
     });
   }
 });
@@ -317,13 +561,23 @@ router.post('/config', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'All analyzer and generator fields are required' });
     }
 
-    // Validate models exist
-    if (!AVAILABLE_MODELS[analyzer_provider]?.some(m => m.id === analyzer_model)) {
-      return res.status(400).json({ error: 'Invalid analyzer provider or model' });
+    // Validate providers are supported
+    const supportedProviders = ['claude', 'openai', 'gemini'];
+    if (!supportedProviders.includes(analyzer_provider)) {
+      return res.status(400).json({ error: 'Invalid analyzer provider' });
     }
 
-    if (!AVAILABLE_MODELS[generator_provider]?.some(m => m.id === generator_model)) {
-      return res.status(400).json({ error: 'Invalid generator provider or model' });
+    if (!supportedProviders.includes(generator_provider)) {
+      return res.status(400).json({ error: 'Invalid generator provider' });
+    }
+
+    // Validate model IDs are not empty (actual validation happens when API is called)
+    if (!analyzer_model || typeof analyzer_model !== 'string') {
+      return res.status(400).json({ error: 'Invalid analyzer model' });
+    }
+
+    if (!generator_model || typeof generator_model !== 'string') {
+      return res.status(400).json({ error: 'Invalid generator model' });
     }
 
     let result;

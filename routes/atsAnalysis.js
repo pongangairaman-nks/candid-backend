@@ -91,18 +91,21 @@ router.post('/analysis', authenticateToken, async (req, res) => {
           model: userConfig.model,
         };
 
-        // Validate model before making API call
-        const validModels = {
-          claude: ['claude-3-5-sonnet-latest', 'claude-3-haiku-20240307', 'claude-3-opus-20240229'],
-          openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
-          gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-flash'],
-        };
+        // Validate provider and model are not empty (actual validation happens when API is called)
+        const supportedProviders = ['claude', 'openai', 'gemini'];
+        if (!supportedProviders.includes(provider)) {
+          console.error(`❌ Invalid provider: ${provider}`);
+          return res.status(400).json({
+            status: 'error',
+            message: `Invalid provider "${provider}". Supported providers: ${supportedProviders.join(', ')}`,
+          });
+        }
 
-        if (!validModels[provider]?.includes(analyzerConfig.model)) {
+        if (!analyzerConfig.model || typeof analyzerConfig.model !== 'string') {
           console.error(`❌ Invalid model for provider ${provider}: ${analyzerConfig.model}`);
           return res.status(400).json({
             status: 'error',
-            message: `Invalid model "${analyzerConfig.model}" for provider "${provider}". Valid models: ${validModels[provider]?.join(', ') || 'none'}`,
+            message: `Invalid model "${analyzerConfig.model}" for provider "${provider}"`,
           });
         }
 

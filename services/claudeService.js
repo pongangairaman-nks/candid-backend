@@ -202,16 +202,11 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
             throw new Error('Claude API key not configured. Please configure your LLM settings in the Configuration page.');
         }
 
-        const validClaudeModels = [
-            'claude-3-5-sonnet-latest',
-            'claude-3-haiku-20240307',
-            'claude-3-opus-20240229',
-        ];
-
         const model = userConfig.model || 'claude-3-5-sonnet-latest';
         
-        if (!validClaudeModels.includes(model)) {
-            throw new Error(`Invalid Claude model: ${model}. Valid models are: ${validClaudeModels.join(', ')}`);
+        // Validate model is a non-empty string (actual validation happens when API is called)
+        if (!model || typeof model !== 'string') {
+            throw new Error(`Invalid Claude model: ${model}`);
         }
 
         console.log('🔍 [DEBUG] Claude analyzeJobDescription called with config:', {
