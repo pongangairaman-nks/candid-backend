@@ -6,6 +6,7 @@ import { analyzeJobDescription as analyzeWithClaude } from '../services/claudeSe
 import { analyzeJobDescription as analyzeWithOpenAI } from '../services/openaiService.js';
 import { getUserLLMConfig } from './llmConfig.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { extractRequirementsLLM, mapRequirementsToResumeLLM, incrementalRescoreLLM } from '../services/atsLLMService.js';
 
 const router = express.Router();
 
@@ -218,6 +219,192 @@ router.get('/analysis/:resumeId', authenticateToken, async (req, res) => {
       status: 'error',
       message: 'Failed to fetch ATS analysis',
     });
+  }
+});
+
+/**
+ * POST /api/ats/llm/analysis
+ * LLM-based ATS baseline analysis (token-efficient). Uses cheaper models by default.
+ */
+router.post('/llm/analysis', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { resumeId, resumeText, jobDescription, force } = req.body || {};
+
+    console.log(`📊 [LLM ATS] Baseline analysis request for user ${userId}`);
+
+    // Fetch resume if not provided
+    let resume;
+    if (resumeText) {
+      resume = { id: null, master_resume_text: resumeText, job_description: jobDescription, ats_analysis: null };
+    } else {
+      const query = resumeId
+        ? 'SELECT id, master_resume_text, job_description, ats_analysis FROM resumes WHERE id = $1 AND user_id = $2'
+        : 'SELECT id, master_resume_text, job_description, ats_analysis FROM resumes WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1';
+      const params = resumeId ? [resumeId, userId] : [userId];
+      const result = await pool.query(query, params);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ status: 'error', message: 'Resume not found. Please create a resume first.' });
+      }
+      resume = result.rows[0];
+    }
+
+    if (!resume.master_resume_text) {
+      return res.status(400).json({ status: 'error', message: 'Resume text is empty. Please save a resume first.' });
+    }
+
+    const jd = jobDescription || resume.job_description;
+    if (!jd) {
+      return res.status(400).json({ status: 'error', message: 'Job description is required. Please analyze a job description first.' });
+    }
+
+    // Reuse cached baseline if present and not forced
+    let existingATS = null;
+    if (resume.ats_analysis) {
+      try { existingATS = JSON.parse(resume.ats_analysis); } catch { existingATS = null; }
+    }
+    if (existingATS?.llm && !force) {
+      console.log('✅ [LLM ATS] Using cached baseline');
+      return res.status(200).json({ status: 'success', message: 'LLM ATS baseline (cached)', data: existingATS.llm });
+    }
+
+    // Analyzer config (use cheaper defaults inside service)
+    let analyzerConfig = await getUserLLMConfig(userId, 'analyzer');
+    if (!analyzerConfig) {
+      if (process.env.LLM_STUB === 'true') {
+        analyzerConfig = { provider: 'openai', model: 'gpt-4o-mini', apiKey: 'stub' };
+      } else {
+        return res.status(400).json({ status: 'error', message: 'LLM analyzer configuration not found. Configure in Settings.' });
+      }
+    }
+
+    // Phase 1A: Extract requirements (cheap model)
+    const requirements = await extractRequirementsLLM(jd, analyzerConfig);
+    console.log(`✅ [LLM ATS] Extracted ${requirements.length} requirements`);
+
+    // Phase 1B: Map requirements to resume (better model, but still controlled)
+    const mapping = await mapRequirementsToResumeLLM(requirements, resume.master_resume_text, analyzerConfig);
+    console.log(`✅ [LLM ATS] Mapped ${mapping.mappings.length} requirements, score=${mapping.overall_score}`);
+
+    // Merge and persist under ats_analysis.llm while keeping top-level compatibility
+    const now = new Date().toISOString();
+    const newATS = existingATS || {};
+    newATS.llm = {
+      requirements,
+      mappings: mapping.mappings,
+      overall_score: mapping.overall_score,
+      keyword_gaps: mapping.keyword_gaps,
+      strengths: mapping.strengths,
+      critical_gaps: mapping.critical_gaps,
+      updated_at: now,
+    };
+    // Optionally mirror overall score to top-level for convenience
+    newATS.ats_score = mapping.overall_score;
+
+    if (resume.id) {
+      await pool.query(
+        `UPDATE resumes SET ats_analysis = $1, updated_at = NOW() WHERE id = $2`,
+        [JSON.stringify(newATS), resume.id]
+      );
+    }
+
+    return res.status(200).json({ status: 'success', message: 'LLM ATS baseline computed', data: newATS.llm });
+  } catch (error) {
+    console.error('❌ [LLM ATS] Baseline error:', error.message);
+    return res.status(500).json({ status: 'error', message: 'Failed to compute LLM ATS baseline', error: error.message });
+  }
+});
+
+/**
+ * POST /api/ats/llm/rescore
+ * Incremental re-score after a section edit (cheap model, minimal tokens)
+ */
+router.post('/llm/rescore', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { resumeId, section_key, before_text, after_text } = req.body || {};
+
+    if (!resumeId) {
+      return res.status(400).json({ status: 'error', message: 'resumeId is required' });
+    }
+
+    const result = await pool.query(
+      'SELECT id, ats_analysis FROM resumes WHERE id = $1 AND user_id = $2',
+      [resumeId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Resume not found' });
+    }
+
+    let ats = null;
+    try { ats = result.rows[0].ats_analysis ? JSON.parse(result.rows[0].ats_analysis) : null; } catch { ats = null; }
+    if (!ats?.llm) {
+      return res.status(400).json({ status: 'error', message: 'LLM ATS baseline not found. Run /api/ats/llm/analysis first.' });
+    }
+
+    const baseline = ats.llm;
+    const baselineScore = typeof baseline.overall_score === 'number' ? baseline.overall_score : 0;
+
+    // Determine affected requirements
+    let affectedBase = baseline.mappings || [];
+    if (section_key) {
+      affectedBase = affectedBase.filter(m => m.section_key === section_key || (m.match_strength && String(m.match_strength).toUpperCase() === 'MISSING'));
+    } else {
+      // If section is unknown, fall back to rescoring previously MISSING only
+      affectedBase = affectedBase.filter(m => m.match_strength && String(m.match_strength).toUpperCase() === 'MISSING');
+    }
+    const affected = affectedBase.map(m => ({ requirement_id: m.requirement_id || m.requirementId || m.id, previous: m.match_strength || 'MISSING' }));
+
+    if (!affected.length) {
+      console.log('ℹ️ [LLM ATS] No affected requirements for this section change');
+      return res.status(200).json({ status: 'success', message: 'No affected requirements', data: { updated_mappings: [], score_delta: 0, new_overall_score: baselineScore } });
+    }
+
+    let analyzerConfig = await getUserLLMConfig(userId, 'analyzer');
+    if (!analyzerConfig) {
+      if (process.env.LLM_STUB === 'true') {
+        analyzerConfig = { provider: 'openai', model: 'gpt-4o-mini', apiKey: 'stub' };
+      } else {
+        return res.status(400).json({ status: 'error', message: 'LLM analyzer configuration not found. Configure in Settings.' });
+      }
+    }
+
+    const inc = await incrementalRescoreLLM({
+      affectedMappings: affected,
+      beforeText: before_text,
+      afterText: after_text,
+      baselineScore,
+    }, analyzerConfig);
+
+    // Merge updates
+    const updated = new Map();
+    for (const um of inc.updated_mappings || []) {
+      updated.set(um.requirement_id, um.match_strength || um.matchStrength);
+    }
+
+    baseline.mappings = (baseline.mappings || []).map(m => {
+      const rid = m.requirement_id || m.requirementId || m.id;
+      if (updated.has(rid)) {
+        return { ...m, match_strength: updated.get(rid) };
+      }
+      return m;
+    });
+
+    baseline.overall_score = inc.new_overall_score;
+    baseline.updated_at = new Date().toISOString();
+    ats.llm = baseline;
+    ats.ats_score = inc.new_overall_score; // convenience mirror
+
+    await pool.query(
+      'UPDATE resumes SET ats_analysis = $1, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(ats), resumeId]
+    );
+
+    return res.status(200).json({ status: 'success', message: 'LLM ATS re-scored', data: inc });
+  } catch (error) {
+    console.error('❌ [LLM ATS] Rescore error:', error.message);
+    return res.status(500).json({ status: 'error', message: 'Failed to re-score LLM ATS', error: error.message });
   }
 });
 
