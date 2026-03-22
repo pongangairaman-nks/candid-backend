@@ -278,12 +278,14 @@ router.post('/llm/analysis', authenticateToken, async (req, res) => {
       }
     }
 
-    // Phase 1A: Extract requirements (cheap model)
+    const tExtractStart = Date.now();
     const requirements = await extractRequirementsLLM(jd, analyzerConfig);
+    const tExtractMs = Date.now() - tExtractStart;
     console.log(`✅ [LLM ATS] Extracted ${requirements.length} requirements`);
 
-    // Phase 1B: Map requirements to resume (better model, but still controlled)
+    const tMapStart = Date.now();
     const mapping = await mapRequirementsToResumeLLM(requirements, resume.master_resume_text, analyzerConfig);
+    const tMapMs = Date.now() - tMapStart;
     console.log(`✅ [LLM ATS] Mapped ${mapping.mappings.length} requirements, score=${mapping.overall_score}`);
 
     // Merge and persist under ats_analysis.llm while keeping top-level compatibility
@@ -298,6 +300,26 @@ router.post('/llm/analysis', authenticateToken, async (req, res) => {
       critical_gaps: mapping.critical_gaps,
       updated_at: now,
     };
+    const usageEntries = [
+      {
+        ts: now,
+        phase: 'analysis.extract',
+        provider: analyzerConfig.provider,
+        model: analyzerConfig.model || null,
+        latency_ms: tExtractMs,
+        stub: process.env.LLM_STUB === 'true'
+      },
+      {
+        ts: now,
+        phase: 'analysis.map',
+        provider: analyzerConfig.provider,
+        model: analyzerConfig.model || null,
+        latency_ms: tMapMs,
+        stub: process.env.LLM_STUB === 'true'
+      }
+    ];
+    const prevUsage = Array.isArray(existingATS?.llm_usage) ? existingATS.llm_usage : [];
+    newATS.llm_usage = [...prevUsage, ...usageEntries];
     // Optionally mirror overall score to top-level for convenience
     newATS.ats_score = mapping.overall_score;
 
@@ -370,12 +392,14 @@ router.post('/llm/rescore', authenticateToken, async (req, res) => {
       }
     }
 
+    const tRescoreStart = Date.now();
     const inc = await incrementalRescoreLLM({
       affectedMappings: affected,
       beforeText: before_text,
       afterText: after_text,
       baselineScore,
     }, analyzerConfig);
+    const tRescoreMs = Date.now() - tRescoreStart;
 
     // Merge updates
     const updated = new Map();
@@ -395,6 +419,18 @@ router.post('/llm/rescore', authenticateToken, async (req, res) => {
     baseline.updated_at = new Date().toISOString();
     ats.llm = baseline;
     ats.ats_score = inc.new_overall_score; // convenience mirror
+    const prevUsage2 = Array.isArray(ats.llm_usage) ? ats.llm_usage : [];
+    ats.llm_usage = [
+      ...prevUsage2,
+      {
+        ts: new Date().toISOString(),
+        phase: 'rescore',
+        provider: analyzerConfig.provider,
+        model: analyzerConfig.model || null,
+        latency_ms: tRescoreMs,
+        stub: process.env.LLM_STUB === 'true'
+      }
+    ];
 
     await pool.query(
       'UPDATE resumes SET ats_analysis = $1, updated_at = NOW() WHERE id = $2',
@@ -405,6 +441,63 @@ router.post('/llm/rescore', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('❌ [LLM ATS] Rescore error:', error.message);
     return res.status(500).json({ status: 'error', message: 'Failed to re-score LLM ATS', error: error.message });
+  }
+});
+
+/**
+ * GET /api/ats/llm/usage?resumeId=123
+ * Returns summarized LLM usage for ATS operations
+ */
+router.get('/llm/usage', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const resumeId = req.query.resumeId ? parseInt(req.query.resumeId, 10) : null;
+
+    // Ensure ats_analysis column exists; otherwise skip with empty usage (older DBs)
+    const existsCol = await pool.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'resumes' AND column_name = 'ats_analysis'
+       ) AS exists`
+    );
+    const hasAtsAnalysis = Boolean(existsCol?.rows?.[0]?.exists);
+    if (!hasAtsAnalysis) {
+      return res.status(200).json({ status: 'success', data: { usage: [], totals: { total_calls: 0, analysis_calls: 0, rescore_calls: 0, total_latency_ms: 0, stub_calls: 0 } } });
+    }
+
+    let result;
+    if (resumeId) {
+      result = await pool.query(
+        'SELECT id, ats_analysis FROM resumes WHERE id = $1 AND user_id = $2',
+        [resumeId, userId]
+      );
+    } else {
+      result = await pool.query(
+        'SELECT id, ats_analysis FROM resumes WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1',
+        [userId]
+      );
+    }
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Resume not found' });
+    }
+
+    let ats = null;
+    try { ats = result.rows[0].ats_analysis ? JSON.parse(result.rows[0].ats_analysis) : null; } catch { ats = null; }
+    const usage = Array.isArray(ats?.llm_usage) ? ats.llm_usage : [];
+    const totals = usage.reduce((acc, u) => {
+      acc.total_calls += 1;
+      acc.total_latency_ms += typeof u.latency_ms === 'number' ? u.latency_ms : 0;
+      if (u.phase && String(u.phase).startsWith('analysis')) acc.analysis_calls += 1;
+      if (u.phase === 'rescore') acc.rescore_calls += 1;
+      if (u.stub) acc.stub_calls += 1;
+      return acc;
+    }, { total_calls: 0, analysis_calls: 0, rescore_calls: 0, total_latency_ms: 0, stub_calls: 0 });
+
+    return res.status(200).json({ status: 'success', data: { usage, totals } });
+  } catch (error) {
+    console.error('❌ [LLM ATS] Usage error:', error.message);
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch LLM usage', error: error.message });
   }
 });
 
