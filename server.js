@@ -10,6 +10,7 @@ import generateRouter from './routes/generate.js';
 import pdfRouter from './routes/pdf.js';
 import authRouter from './routes/auth.js';
 import resumeRouter from './routes/resume.js';
+import refineSectionRouter from './routes/refineSection.js';
 import llmConfigRouter from './routes/llmConfig.js';
 import atsRouter from './routes/atsAnalysis.js';
 import jobApplicationsRouter from './routes/jobApplications.js';
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/resume', resumeRouter);
+app.use('/api/resume', refineSectionRouter);
 app.use('/api/llm', llmConfigRouter);
 app.use('/api/ats', atsRouter);
 app.use('/api/job-applications', jobApplicationsRouter);
