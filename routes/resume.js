@@ -232,13 +232,10 @@ router.get('/master-cover-letter-template', authenticateToken, async (req, res) 
 router.post('/optimize', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { resumeText, masterDocument, jobDescription, prompt, fullLatexCode } = req.body;
-
-    // Support both resumeText and masterDocument field names
-    const selectedText = resumeText || masterDocument;
+    const { jobDescription, prompt, masterProfile, resume } = req.body;
 
     // Validate input
-    if (!selectedText || !selectedText.trim()) {
+    if (!resume || !resume.trim()) {
       return res.status(400).json({
         status: 'error',
         message: 'Resume text is required',
@@ -257,17 +254,8 @@ router.post('/optimize', authenticateToken, async (req, res) => {
       ? prompt 
       : 'Optimize this resume section to better match the job description. Improve clarity, impact, and ATS keyword alignment while maintaining the original structure and LaTeX formatting.';
 
-    // Get full LaTeX code if not provided - fetch from master template
-    let fullLatex = fullLatexCode;
-    if (!fullLatex) {
-      const masterResult = await pool.query(
-        `SELECT original_latex FROM resumes WHERE user_id = $1 ORDER BY id ASC LIMIT 1`,
-        [userId]
-      );
-      if (masterResult.rows.length > 0) {
-        fullLatex = masterResult.rows[0].original_latex;
-      }
-    }
+    // Use masterProfile as full LaTeX context, fallback to resume if not provided
+    const fullLatex = masterProfile || resume;
 
     // Get user's LLM configuration
     const userConfig = await getUserLLMConfig(userId, 'generator');
@@ -286,24 +274,24 @@ router.post('/optimize', authenticateToken, async (req, res) => {
     // Call appropriate LLM service based on provider with FULL resume context for best quality
     if (userConfig.provider === 'claude') {
       optimizedText = await optimizeSectionWithClaude(
-        selectedText,
-        fullLatex || selectedText,
+        resume,
+        fullLatex,
         jobDescription,
         optimizationPrompt,
         userConfig
       );
     } else if (userConfig.provider === 'openai') {
       optimizedText = await optimizeSectionWithOpenAI(
-        selectedText,
-        fullLatex || selectedText,
+        resume,
+        fullLatex,
         jobDescription,
         optimizationPrompt,
         userConfig
       );
     } else if (userConfig.provider === 'gemini') {
       optimizedText = await optimizeSectionWithGemini(
-        selectedText,
-        fullLatex || selectedText,
+        resume,
+        fullLatex,
         jobDescription,
         optimizationPrompt,
         userConfig
@@ -315,11 +303,11 @@ router.post('/optimize', authenticateToken, async (req, res) => {
       });
     }
 
-    console.log('✅ Section optimized successfully');
+    console.log('✅ Resume optimized successfully');
 
     res.status(200).json({
       status: 'success',
-      message: 'Section optimized successfully',
+      message: 'Resume optimized successfully',
       data: {
         optimizedLatex: optimizedText,
       },
@@ -328,7 +316,7 @@ router.post('/optimize', authenticateToken, async (req, res) => {
     console.error('Resume optimization error:', error.message);
     
     // Extract meaningful error message from different error types
-    let errorMessage = 'Failed to optimize resume section';
+    let errorMessage = 'Failed to optimize resume';
     
     if (error.message && error.message.includes('credit balance')) {
       errorMessage = 'API credit balance is too low. Please upgrade your API plan.';
