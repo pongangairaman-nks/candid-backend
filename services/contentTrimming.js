@@ -93,6 +93,7 @@ export const splitIntoChunks = (content, maxChunkSize = 500) => {
 
 /**
  * Trim master content to relevant chunks based on JD keywords
+ * Handles both new sections array format and legacy string format
  * Returns top K most relevant chunks
  */
 export const trimMasterContentToRelevant = (masterContent, jobDescription, analysis, options = {}) => {
@@ -108,10 +109,52 @@ export const trimMasterContentToRelevant = (masterContent, jobDescription, analy
       return masterContent || '';
     }
 
+    // Handle new sections format (array of objects with title and content)
+    if (Array.isArray(masterContent)) {
+      const keywords = extractKeywordsFromJD(jobDescription, analysis);
+
+      if (!keywords?.length) {
+        logger.warn('No keywords extracted for content trimming');
+        return masterContent;
+      }
+
+      // Score each section
+      const scoredSections = masterContent
+        .map((section, idx) => ({
+          section,
+          score: calculateRelevanceScore((section.title || '') + ' ' + (section.content || ''), keywords),
+          index: idx,
+        }))
+        .filter((item) => item.score >= threshold)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
+
+      // Combine sections respecting max char limit
+      let trimmedSections = [];
+      let charCount = 0;
+
+      scoredSections.forEach(({ section }) => {
+        const sectionStr = JSON.stringify(section);
+        if (charCount + sectionStr.length <= maxTotalChars) {
+          trimmedSections.push(section);
+          charCount += sectionStr.length;
+        }
+      });
+
+      logger.info('Sections trimmed', {
+        totalSections: masterContent.length,
+        trimmedSections: trimmedSections.length,
+        reduction: `${Math.round((1 - trimmedSections.length / masterContent.length) * 100)}%`,
+      });
+
+      return trimmedSections;
+    }
+
+    // Handle legacy string format
     // Extract keywords
     const keywords = extractKeywordsFromJD(jobDescription, analysis);
 
-    if (keywords?.length || 0 === 0) {
+    if (keywords?.length === 0) {
       logger.warn('No keywords extracted for content trimming');
       return masterContent;
     }

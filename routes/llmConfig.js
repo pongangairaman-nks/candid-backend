@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import OpenAI from 'openai';
+import { DEFAULT_PROMPTS } from '../prompts/defaultPrompt.js';
 
 const router = express.Router();
 
@@ -490,6 +491,10 @@ router.get('/config', authenticateToken, async (req, res) => {
     };
 
     const config = result.rows?.[0];
+    
+    // Parse masterContent if it's a string (handle both formats)
+    let masterContent = config.master_content;
+    
     // Return with camelCase keys
     res.json({
       analyzerProvider: config.analyzer_provider,
@@ -498,9 +503,11 @@ router.get('/config', authenticateToken, async (req, res) => {
       generatorProvider: config.generator_provider,
       generatorModel: config.generator_model,
       generatorApiKey: config.generator_api_key, //maskKey(config.generator_api_key),
-      masterContent: config.master_content,
-      masterResumePrompt: config.master_resume_prompt,
-      masterCoverLetterPrompt: config.master_cover_letter_prompt,
+      masterContent: masterContent,
+      masterResumePrompt: config.master_resume_prompt || DEFAULT_PROMPTS.masterResumePrompt,
+      masterCoverLetterPrompt: config.master_cover_letter_prompt || DEFAULT_PROMPTS.masterCoverLetterPrompt,
+      masterResume: config.master_resume,
+      masterCoverLetter: config.master_cover_letter,
       masterResume: config.master_resume,
       masterCoverLetter: config.master_cover_letter,
       useLatexTemplate: config.use_latex_template,
@@ -529,7 +536,7 @@ router.post('/config', authenticateToken, async (req, res) => {
     }
 
     // ✅ camelCase input
-    const {
+    let {
       analyzerProvider,
       analyzerModel,
       analyzerApiKey,
@@ -580,7 +587,7 @@ router.post('/config', authenticateToken, async (req, res) => {
           generatorProvider ?? 'openai',
           generatorModel ?? 'gpt-4o-mini',
           generatorApiKey ?? null,
-          masterContent ?? null,
+          JSON.stringify(masterContent ?? null),
           masterResumePrompt ?? null,
           masterCoverLetterPrompt ?? null,
           masterResume ?? null,
@@ -618,7 +625,7 @@ router.post('/config', authenticateToken, async (req, res) => {
           generatorModel ?? null,
           generatorApiKey ?? null,
 
-          masterContent ?? null,
+          JSON.stringify(masterContent ?? null),
           masterResumePrompt ?? null,
           masterCoverLetterPrompt ?? null,
           masterResume ?? null,
@@ -636,30 +643,35 @@ router.post('/config', authenticateToken, async (req, res) => {
       return key?.slice(0, 4) + '****' + key?.slice(-4);
     };
     
-    const mapConfig = (row) => ({
-      id: row.id,
-      userId: row.user_id,
-    
-      analyzerProvider: row.analyzer_provider,
-      analyzerModel: row.analyzer_model,
-      analyzerApiKey: row.analyzer_api_key, //maskKey(row.analyzer_api_key),
-    
-      generatorProvider: row.generator_provider,
-      generatorModel: row.generator_model,
-      generatorApiKey: row.generator_api_key, //maskKey(row.generator_api_key),
-    
-      masterContent: row.master_content,
-      masterResumePrompt: row.master_resume_prompt,
-      masterCoverLetterPrompt: row.master_cover_letter_prompt,
-      masterResume: row.master_resume,
-      masterCoverLetter: row.master_cover_letter,
-    
-      useLatexTemplate: row.use_latex_template,
-      isActive: row.is_active,
-    
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    });
+    const mapConfig = (row) => {
+      // Parse masterContent if it's a string
+      let masterContent = row.master_content;
+      
+      return {
+        id: row.id,
+        userId: row.user_id,
+      
+        analyzerProvider: row.analyzer_provider,
+        analyzerModel: row.analyzer_model,
+        analyzerApiKey: row.analyzer_api_key, //maskKey(row.analyzer_api_key),
+      
+        generatorProvider: row.generator_provider,
+        generatorModel: row.generator_model,
+        generatorApiKey: row.generator_api_key, //maskKey(row.generator_api_key),
+      
+        masterContent: masterContent,
+        masterResumePrompt: row.master_resume_prompt,
+        masterCoverLetterPrompt: row.master_cover_letter_prompt,
+        masterResume: row.master_resume,
+        masterCoverLetter: row.master_cover_letter,
+      
+        useLatexTemplate: row.use_latex_template,
+        isActive: row.is_active,
+      
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    };
 
     return res.json({
       message: 'Configuration saved successfully',
@@ -717,7 +729,7 @@ router.put('/config', authenticateToken, async (req, res) => {
           'claude-3-5-haiku-20241022',
           'openai',
           'gpt-4o-mini',
-          masterContent ?? null,
+          JSON.stringify(masterContent ?? null),
           masterResumePrompt ?? null,
           masterCoverLetterPrompt ?? null,
         ]
@@ -739,7 +751,7 @@ router.put('/config', authenticateToken, async (req, res) => {
        WHERE user_id = $4
        RETURNING *`,
       [
-        masterContent ?? null,
+        JSON.stringify(masterContent ?? null),
         masterResumePrompt ?? null,
         masterCoverLetterPrompt ?? null,
         userId,
