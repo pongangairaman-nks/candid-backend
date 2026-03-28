@@ -1,70 +1,69 @@
-/**
- * Gemini prompt for analyzing job descriptions and extracting keywords, skills, and role focus
- * @param {string} jobDescription - The job description text
- * @param {string} resumeText - The candidate's resume text
- * @returns {string} The formatted prompt for Gemini
- */
 export const getGeminiAnalysisPrompt = (jobDescription, resumeText) => {
-  return `You are an advanced ATS resume optimization and job description analysis engine.
+  const systemPrompt = `
+    You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist.
 
-Your task is to deeply analyze the JOB DESCRIPTION and compare it against the CANDIDATE'S RESUME to identify alignment gaps and optimization opportunities.
+    Analyze deeply and return STRICT JSON only.
 
-JOB DESCRIPTION:
-${jobDescription}
+    Rules:
+    - Return ONLY JSON
+    - No markdown
+    - No backticks
+    - No explanations
+    - Suggestions MUST be specific and based on actual resume content
+    `;
 
-CANDIDATE'S RESUME:
-${resumeText}
+  const userPrompt = `
+    Analyze the job description and resume.
 
-CRITICAL: Return your response as ONLY a valid JSON object. No markdown, no code blocks, no extra text before or after.
+    JOB DESCRIPTION:
+    ${jobDescription}
 
-{
-  "primary_keywords": ["keyword1", "keyword2"],
-  "secondary_keywords": ["keyword1", "keyword2"],
-  "missing_skills": ["skill1", "skill2"],
-  "matching_skills": ["skill1", "skill2"],
-  "experience_gaps": ["gap1"],
-  "role_focus": "Role summary",
-  "seniority_level": "mid",
-  "ats_optimization_tips": ["tip1"]
-}
+    RESUME:
+    ${resumeText}
 
-INSTRUCTIONS:
+    Return STRICT JSON in this format:
 
-1. PRIMARY KEYWORDS
-Extract 8–12 MUST-HAVE technical skills, tools, frameworks, or domain keywords that appear critical for this role.
+    {
+      "overview": "2-3 line realistic summary",
 
-2. SECONDARY KEYWORDS
-Extract 5–10 NICE-TO-HAVE or supporting skills that strengthen a candidate but are not core requirements.
+      "score_breakdown": {
+        "keyword_match": number,
+        "experience_match": number,
+        "formatting": number,
+        "impact": number,
+        "overall": number
+      },
 
-3. MISSING SKILLS
-List 5–10 important skills, tools, or qualifications from the job description that do NOT appear in the candidate's resume text.
-Only include skills that are explicitly mentioned or strongly implied in the JD.
+      "primary_keywords": [],
+      "secondary_keywords": [],
 
-4. MATCHING SKILLS
-List key skills from the job description that ARE clearly present in the candidate's resume.
+      "missing_skills": [],
+      "matching_skills": [],
 
-5. EXPERIENCE GAPS
-Identify gaps such as:
-• Missing domain experience (e.g., fintech, SaaS, healthcare)
-• Missing responsibility areas (e.g., leadership, architecture, DevOps)
-• Missing scale indicators (e.g., high traffic, enterprise systems)
+      "role_focus": "Short role summary",
+      "seniority_level": "entry | mid | senior | lead | manager | director",
 
-6. ROLE FOCUS
-Provide a concise summary of what the role is mainly about (e.g., "Frontend-heavy role focused on performance optimization and design systems in a SaaS environment.")
+      "experience_gaps": [],
 
-7. SENIORITY LEVEL
-Infer the expected seniority level based on language in the job description.
+      "section_analysis": [
+        {
+          "section": "Summary | Skills | Experience | Projects | Education",
+          "feedback": "Specific issue"
+        }
+      ],
 
-8. ATS OPTIMIZATION TIPS
-Provide 3–5 short, actionable suggestions to improve ATS alignment (e.g., "Add measurable impact to React projects", "Mention AWS services explicitly", etc.)
+      "improvement_suggestions": [
+        {
+          "section": "Experience | Skills | Summary",
+          "original": "Original resume line",
+          "improved": "Improved rewritten version",
+          "reason": "Why improvement helps"
+        }
+      ],
 
-STRICT RULES:
+      "ats_optimization_tips": []
+    }
+    `;
 
-• Do NOT invent skills that are not present in either the JD or resume.
-• Base all outputs strictly on textual evidence.
-• Keep items concise (1–4 words per keyword/skill).
-• Avoid duplicates.
-• Ensure the output is valid JSON.
-
-Return ONLY the JSON object.`;
+  return { systemPrompt, userPrompt };
 };

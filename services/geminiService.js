@@ -30,12 +30,20 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         const generateContent = getModel(userConfig.apiKey);
         const model = userConfig.model || 'gemini-2.5-flash';
 
-        const prompt = getGeminiAnalysisPrompt(jobDescription, resumeText);
-
+        const { systemPrompt, userPrompt } = getGeminiAnalysisPrompt(jobDescription, resumeText);
 
         const result = await generateContent({
-            model: model,
-            contents: prompt
+        model: model,
+        systemInstruction: {
+            role: "system",
+            parts: [{ text: systemPrompt }],
+        },
+        contents: [
+            {
+            role: "user",
+            parts: [{ text: userPrompt }],
+            },
+        ],
         });
         
         // Handle the new SDK response format
@@ -77,22 +85,44 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         }
 
         // Validate response structure - check for new ATS analysis format
-        if (!analysis.primary_keywords || !analysis.missing_skills || !analysis.role_focus) {
+        if (!analysis.primary_keywords || !analysis.overview) {
             console.error('Invalid structure. Received keys:', Object.keys(analysis));
-            console.error('Full response:', JSON.stringify(analysis, null, 2));
             throw new Error('Invalid analysis structure from Gemini');
-        }
-
+          }
         // Ensure all required arrays exist and are arrays
         const sanitizedAnalysis = {
+            overview: String(analysis.overview || ''),
+          
+            score_breakdown: {
+              keyword_match: Number(analysis?.score_breakdown?.keyword_match || 0),
+              experience_match: Number(analysis?.score_breakdown?.experience_match || 0),
+              formatting: Number(analysis?.score_breakdown?.formatting || 0),
+              impact: Number(analysis?.score_breakdown?.impact || 0),
+              overall: Number(analysis?.score_breakdown?.overall || 0),
+            },
+          
             primary_keywords: Array.isArray(analysis.primary_keywords) ? analysis.primary_keywords : [],
             secondary_keywords: Array.isArray(analysis.secondary_keywords) ? analysis.secondary_keywords : [],
+          
             missing_skills: Array.isArray(analysis.missing_skills) ? analysis.missing_skills : [],
             matching_skills: Array.isArray(analysis.matching_skills) ? analysis.matching_skills : [],
-            experience_gaps: Array.isArray(analysis.experience_gaps) ? analysis.experience_gaps : [],
+          
             role_focus: String(analysis.role_focus || ''),
             seniority_level: String(analysis.seniority_level || 'mid'),
-            ats_optimization_tips: Array.isArray(analysis.ats_optimization_tips) ? analysis.ats_optimization_tips : [],
+          
+            experience_gaps: Array.isArray(analysis.experience_gaps) ? analysis.experience_gaps : [],
+          
+            section_analysis: Array.isArray(analysis.section_analysis)
+              ? analysis.section_analysis
+              : [],
+          
+            improvement_suggestions: Array.isArray(analysis.improvement_suggestions)
+              ? analysis.improvement_suggestions
+              : [],
+          
+            ats_optimization_tips: Array.isArray(analysis.ats_optimization_tips)
+              ? analysis.ats_optimization_tips
+              : [],
         };
 
         console.log('✅ Gemini analysis complete');

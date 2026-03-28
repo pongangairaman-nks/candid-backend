@@ -89,41 +89,84 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         const client = new OpenAI({ apiKey: userConfig.apiKey });
         const model = userConfig.model || 'gpt-4o-mini';
 
-        const systemPrompt = `You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist. Your task is to analyze a job description and compare it with a resume to extract critical information for ATS scoring.
+        const systemPrompt = `You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist.
 
-Return a valid JSON object with the following structure:
-{
-  "primary_keywords": ["keyword1", "keyword2", ...],
-  "secondary_keywords": ["keyword1", "keyword2", ...],
-  "missing_skills": ["skill1", "skill2", ...],
-  "matching_skills": ["skill1", "skill2", ...],
-  "role_focus": "Brief description of the role's primary focus",
-  "seniority_level": "entry|mid|senior|lead|manager|director",
-  "experience_gaps": ["gap1", "gap2", ...],
-  "ats_optimization_tips": ["tip1", "tip2", ...]
-}
+            Analyze the given job description and resume deeply.
 
-IMPORTANT: Return ONLY valid JSON, no markdown, no code blocks, no explanations.`;
+            Return STRICTLY valid JSON with the following structure:
+
+            {
+            "overview": "2-3 line realistic summary of how well the resume matches the job. Mention strengths and key gaps.",
+
+            "score_breakdown": {
+                "keyword_match": number (0-100),
+                "experience_match": number (0-100),
+                "formatting": number (0-100),
+                "impact": number (0-100),
+                "overall": number (0-100)
+            },
+
+            "primary_keywords": ["must-have skills"],
+            "secondary_keywords": ["nice-to-have skills"],
+
+            "missing_skills": ["skills missing from resume"],
+            "matching_skills": ["skills present in both JD and resume"],
+
+            "role_focus": "1-2 line description of what the role is mainly about",
+            "seniority_level": "entry | mid | senior | lead | manager | director",
+
+            "experience_gaps": ["missing experience areas"],
+
+            "section_analysis": [
+                {
+                "section": "Summary | Skills | Experience | Projects | Education",
+                "feedback": "Specific issue in that section"
+                }
+            ],
+
+            "improvement_suggestions": [
+                {
+                "section": "Experience | Skills | Summary",
+                "original": "Actual line or content from resume",
+                "improved": "Rewritten better version with impact",
+                "reason": "Why this improves ATS or recruiter readability"
+                }
+            ],
+
+            "ats_optimization_tips": [
+                "specific actionable tips"
+            ]
+            }
+
+            IMPORTANT RULES:
+            - Return ONLY JSON
+            - NO markdown
+            - NO backticks
+            - NO explanations
+            - Suggestions MUST be specific, not generic
+            - Use actual resume content where possible
+            - Keep output concise but meaningful
+            `;
 
         const userPrompt = `Analyze this job description and resume to extract ATS-critical information.
 
-JOB DESCRIPTION:
-${jobDescription}
+            JOB DESCRIPTION:
+            ${jobDescription}
 
-RESUME:
-${resumeText}
+            RESUME:
+            ${resumeText}
 
-Extract:
-1. Primary keywords (must-have skills/requirements) - 5-10 items
-2. Secondary keywords (nice-to-have skills) - 5-10 items
-3. Missing skills (in JD but not in resume) - 5-10 items
-4. Matching skills (in both JD and resume) - 5-10 items
-5. Role focus (main purpose of the role in 1-2 sentences)
-6. Seniority level (entry, mid, senior, lead, manager, or director)
-7. Experience gaps (missing experience areas)
-8. ATS optimization tips (how to improve resume for this JD)
+            Extract:
+            1. Primary keywords (must-have skills/requirements) - 5-10 items
+            2. Secondary keywords (nice-to-have skills) - 5-10 items
+            3. Missing skills (in JD but not in resume) - 5-10 items
+            4. Matching skills (in both JD and resume) - 5-10 items
+            5. Role focus (main purpose of the role in 1-2 sentences)
+            6. Seniority level (entry, mid, senior, lead, manager, or director)
+            7. Experience gaps (missing experience areas)
+            8. ATS optimization tips (how to improve resume for this JD)
 
-Return ONLY valid JSON.`;
+            Return ONLY valid JSON.`;
 
         try {
             const message = await client.chat.completions.create({
@@ -166,21 +209,45 @@ Return ONLY valid JSON.`;
             }
 
             // Validate response structure
-            if (!analysis.primary_keywords || !analysis.missing_skills || !analysis.role_focus) {
+            if (!analysis.primary_keywords || !analysis.overview) {
                 console.error('Invalid structure. Received keys:', Object.keys(analysis));
-                throw new Error('Invalid analysis structure from OpenAI');
-            }
+                throw new Error('Invalid analysis structure from Gemini');
+              }
 
             // Ensure all required arrays exist and are arrays
             const sanitizedAnalysis = {
+                overview: String(analysis.overview || ''),
+              
+                score_breakdown: {
+                  keyword_match: Number(analysis?.score_breakdown?.keyword_match || 0),
+                  experience_match: Number(analysis?.score_breakdown?.experience_match || 0),
+                  formatting: Number(analysis?.score_breakdown?.formatting || 0),
+                  impact: Number(analysis?.score_breakdown?.impact || 0),
+                  overall: Number(analysis?.score_breakdown?.overall || 0),
+                },
+              
                 primary_keywords: Array.isArray(analysis.primary_keywords) ? analysis.primary_keywords : [],
                 secondary_keywords: Array.isArray(analysis.secondary_keywords) ? analysis.secondary_keywords : [],
+              
                 missing_skills: Array.isArray(analysis.missing_skills) ? analysis.missing_skills : [],
                 matching_skills: Array.isArray(analysis.matching_skills) ? analysis.matching_skills : [],
-                experience_gaps: Array.isArray(analysis.experience_gaps) ? analysis.experience_gaps : [],
+              
                 role_focus: String(analysis.role_focus || ''),
                 seniority_level: String(analysis.seniority_level || 'mid'),
-                ats_optimization_tips: Array.isArray(analysis.ats_optimization_tips) ? analysis.ats_optimization_tips : [],
+              
+                experience_gaps: Array.isArray(analysis.experience_gaps) ? analysis.experience_gaps : [],
+              
+                section_analysis: Array.isArray(analysis.section_analysis)
+                  ? analysis.section_analysis
+                  : [],
+              
+                improvement_suggestions: Array.isArray(analysis.improvement_suggestions)
+                  ? analysis.improvement_suggestions
+                  : [],
+              
+                ats_optimization_tips: Array.isArray(analysis.ats_optimization_tips)
+                  ? analysis.ats_optimization_tips
+                  : [],
             };
 
             console.log('✅ OpenAI analysis complete');

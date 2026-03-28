@@ -307,15 +307,43 @@ function generateImprovementSuggestions(scores, jobAnalysis, resumeText) {
 /**
  * Format ATS score for display
  */
-export const formatATSResponse = (atsAnalysis) => {
+export const formatATSResponse = (atsAnalysis, jobAnalysis) => {
+  const score =
+    jobAnalysis?.score_breakdown?.overall || atsAnalysis?.atsScore || 0;
+
   return {
-    score: atsAnalysis.atsScore,
-    status: atsAnalysis.atsStatus,
-    message: getATSStatusMessage(atsAnalysis.atsScore),
-    breakdown: atsAnalysis.breakdown,
-    suggestions: atsAnalysis.suggestions,
-    tips: atsAnalysis.optimizationTips,
-    gaps: atsAnalysis.experienceGaps,
+    // 🔹 Core Score
+    score,
+    status: atsAnalysis?.atsStatus || 'review',
+    message: getATSStatusMessage(score),
+
+    // 🔥 NEW (LLM powered)
+    overview: jobAnalysis?.overview || '',
+
+    score_breakdown: jobAnalysis?.score_breakdown || {},
+
+    role_focus: jobAnalysis?.role_focus || '',
+    seniority_level: jobAnalysis?.seniority_level || 'mid',
+
+    // 🔹 Skills
+    primary_keywords: jobAnalysis?.primary_keywords || [],
+    secondary_keywords: jobAnalysis?.secondary_keywords || [],
+
+    matching_skills: jobAnalysis?.matching_skills || [],
+    missing_skills: jobAnalysis?.missing_skills || [],
+
+    // 🔹 Gaps
+    experience_gaps: jobAnalysis?.experience_gaps || [],
+
+    // 🔥 NEW (UI POWER FEATURES)
+    section_analysis: jobAnalysis?.section_analysis || [],
+    improvement_suggestions: jobAnalysis?.improvement_suggestions || [],
+
+    // 🔹 Tips
+    ats_tips: jobAnalysis?.ats_optimization_tips || [],
+
+    // 🔁 Keep old breakdown if needed (optional fallback)
+    breakdown: atsAnalysis?.breakdown || null,
   };
 };
 
@@ -324,12 +352,12 @@ export const formatATSResponse = (atsAnalysis) => {
  */
 function getATSStatusMessage(score) {
   if (score >= 85) {
-    return '🟢 Excellent! Your resume is highly optimized for ATS systems.';
+    return 'Excellent! Your resume is highly optimized for ATS systems.';
   } else if (score >= 70) {
-    return '🟡 Good! Your resume should pass most ATS systems. Consider the suggestions to improve further.';
+    return 'Good! Your resume should pass most ATS systems.';
   } else if (score >= 50) {
-    return '🟠 Fair. Your resume may be filtered by some ATS systems. Follow the suggestions to improve.';
+    return 'Fair. Your resume may be filtered by some ATS systems.';
   } else {
-    return '🔴 Poor. Your resume needs significant improvements to pass ATS systems.';
+    return 'Poor. Your resume needs significant improvements.';
   }
 }

@@ -159,8 +159,7 @@ router.post('/analysis', authenticateToken, async (req, res) => {
     }
 
     // Format and return response
-    const response = formatATSResponse(atsAnalysis);
-
+    const response = formatATSResponse(atsAnalysis, jobAnalysis);
     res.status(200).json({
       status: 'success',
       message: 'ATS analysis completed',
@@ -207,7 +206,7 @@ router.get('/analysis/:resumeId', authenticateToken, async (req, res) => {
     }
 
     const atsAnalysis = JSON.parse(resume.ats_analysis);
-    const response = formatATSResponse(atsAnalysis);
+    const response = formatATSResponse(atsAnalysis, null);
 
     res.status(200).json({
       status: 'success',
