@@ -25,7 +25,7 @@ router.post('/signup', async (req, res) => {
       });
     }
 
-    if (password.length < 8) {
+    if (password?.length < 8) {
       return res.status(400).json({
         status: 'error',
         message: 'Password must be at least 8 characters long',
@@ -56,8 +56,11 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log(`🔐 Login attempt for email: ${email}`);
+
     // Validate input
     if (!email || !password) {
+      console.warn('⚠️ Missing email or password');
       return res.status(400).json({
         status: 'error',
         message: 'Email and password are required',
@@ -65,6 +68,8 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await loginUser(email, password);
+
+    console.log(`✅ Login successful for user: ${email}`);
 
     res.status(200).json({
       status: 'success',
@@ -75,10 +80,15 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Login error:', error.message);
-    res.status(401).json({
+    console.error('❌ Login error:', error.message);
+    console.error('Full error:', error);
+    
+    // Return 401 for authentication errors but with proper message
+    const statusCode = error.statusCode || 401;
+    res.status(statusCode).json({
       status: 'error',
       message: error.message,
+      errorType: error.errorType || 'AUTH_ERROR',
     });
   }
 });
@@ -127,7 +137,7 @@ router.post('/reset-password', async (req, res) => {
       });
     }
 
-    if (newPassword.length < 8) {
+    if (newPassword?.length < 8) {
       return res.status(400).json({
         status: 'error',
         message: 'Password must be at least 8 characters long',

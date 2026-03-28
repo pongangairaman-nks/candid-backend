@@ -184,10 +184,10 @@ Return ONLY valid JSON.`;
             };
 
             console.log('✅ OpenAI analysis complete');
-            console.log(`  Primary keywords: ${sanitizedAnalysis.primary_keywords.length}`);
-            console.log(`  Secondary keywords: ${sanitizedAnalysis.secondary_keywords.length}`);
-            console.log(`  Missing skills: ${sanitizedAnalysis.missing_skills.length}`);
-            console.log(`  Role focus: ${sanitizedAnalysis.role_focus.substring(0, 50)}...`);
+            console.log(`  Primary keywords: ${sanitizedAnalysis.primary_keywords?.length || 0}`);
+            console.log(`  Secondary keywords: ${sanitizedAnalysis.secondary_keywords?.length || 0}`);
+            console.log(`  Missing skills: ${sanitizedAnalysis.missing_skills?.length || 0}`);
+            console.log(`  Role focus: ${sanitizedAnalysis.role_focus?.substring(0, 50) || ''}...`);
 
             return sanitizedAnalysis;
 
@@ -236,24 +236,24 @@ ROLE FOCUS:
 ${analysis.role_focus || 'General alignment with job requirements'}
 
 KEY KEYWORDS TO EMPHASIZE:
-${(analysis.primary_keywords || analysis.keywords || []).join(', ') || 'Key skills from job description'}
+${(analysis?.primary_keywords || analysis?.keywords || []).join(', ') || 'Key skills from job description'}
 
 SKILLS TO INCORPORATE (if relevant to candidate's background):
-${(analysis.missing_skills || []).join(', ') || 'Additional relevant skills'}
+${(analysis?.missing_skills || []).join(', ') || 'Additional relevant skills'}
 
 MASTER RESUME CONTENT (for reference):
 ${masterResumeText}
 
 ${userConfig?.master_content ? `COMPREHENSIVE SKILLS & EXPERIENCE REPOSITORY (additional reference material):
-${userConfig.master_content}
+${userConfig?.master_content}
 
 ` : ''}ORIGINAL LaTeX TEMPLATE:
 ${originalLatex}
 
 INSTRUCTIONS:
-1. Update job descriptions, achievements, and skills to emphasize the keywords: ${(analysis.primary_keywords || analysis.keywords || []).slice(0, 5).join(', ') || 'key skills'}
-2. Reword bullet points to align with the role focus: "${analysis.role_focus || 'job requirements'}"
-3. If the candidate has experience with any of these missing skills, highlight them: ${(analysis.missing_skills || []).slice(0, 3).join(', ') || 'relevant skills'}
+1. Update job descriptions, achievements, and skills to emphasize the keywords: ${(analysis?.primary_keywords || analysis?.keywords || []).slice(0, 5).join(', ') || 'key skills'}
+2. Reword bullet points to align with the role focus: "${analysis?.role_focus || 'job requirements'}"
+3. If the candidate has experience with any of these missing skills, highlight them: ${(analysis?.missing_skills || []).slice(0, 3).join(', ') || 'relevant skills'}
 4. Make the content more relevant to this specific job
 5. Keep all changes subtle and professional
 6. DO NOT change the LaTeX structure, commands, or formatting
@@ -263,7 +263,7 @@ Return ONLY the updated LaTeX document. No explanations, no markdown, no code bl
 
     try {
         const message = await client.chat.completions.create({
-            model: userConfig.model || 'gpt-4o-mini',
+            model: userConfig?.model || 'gpt-4o-mini',
             max_tokens: 4096,
             temperature: 0.7,
             messages: [

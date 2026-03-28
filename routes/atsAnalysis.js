@@ -40,14 +40,14 @@ router.post('/analysis', authenticateToken, async (req, res) => {
       const params = resumeId ? [resumeId, userId] : [userId];
       const result = await pool.query(query, params);
 
-      if (result.rows.length === 0) {
+      if (result.rows?.length === 0) {
         return res.status(404).json({
           status: 'error',
           message: 'Resume not found. Please create a resume first.',
         });
       }
 
-      resume = result.rows[0];
+      resume = result.rows?.[0];
     }
 
     // Validate inputs
@@ -69,7 +69,7 @@ router.post('/analysis', authenticateToken, async (req, res) => {
 
     // Get or create job analysis
     let jobAnalysis;
-    if (resume.analysis_json) {
+    if (resume?.analysis_json) {
       jobAnalysis = JSON.parse(resume.analysis_json);
       console.log('✅ Using cached job analysis');
     } else {
@@ -116,7 +116,7 @@ router.post('/analysis', authenticateToken, async (req, res) => {
           provider, 
           model: analyzerConfig.model, 
           hasApiKey: !!analyzerConfig.apiKey,
-          apiKeyLength: analyzerConfig.apiKey ? analyzerConfig.apiKey.length : 0
+          apiKeyLength: analyzerConfig.apiKey ? analyzerConfig.apiKey?.length : 0
         }, null, 2));
 
         if (provider === 'claude') {
@@ -148,7 +148,7 @@ router.post('/analysis', authenticateToken, async (req, res) => {
     const atsAnalysis = await calculateATSScore(resume.master_resume_text, jd, jobAnalysis);
 
     // Store ATS score in database (optional - for analytics)
-    if (resume.id) {
+    if (resume?.id) {
       await pool.query(
         `UPDATE resumes 
          SET ats_score = $1, ats_analysis = $2, updated_at = NOW()
@@ -190,16 +190,16 @@ router.get('/analysis/:resumeId', authenticateToken, async (req, res) => {
       [resumeId, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       return res.status(404).json({
         status: 'error',
         message: 'Resume not found',
       });
     }
 
-    const resume = result.rows[0];
+    const resume = result.rows?.[0];
 
-    if (!resume.ats_analysis) {
+    if (!resume?.ats_analysis) {
       return res.status(404).json({
         status: 'error',
         message: 'ATS analysis not found. Please run analysis first.',
@@ -243,29 +243,29 @@ router.post('/llm/analysis', authenticateToken, async (req, res) => {
         : 'SELECT id, master_resume_text, job_description, ats_analysis FROM resumes WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1';
       const params = resumeId ? [resumeId, userId] : [userId];
       const result = await pool.query(query, params);
-      if (result.rows.length === 0) {
+      if (result.rows?.length === 0) {
         return res.status(404).json({ status: 'error', message: 'Resume not found. Please create a resume first.' });
       }
-      resume = result.rows[0];
+      resume = result.rows?.[0];
     }
 
-    if (!resume.master_resume_text) {
+    if (!resume?.master_resume_text) {
       return res.status(400).json({ status: 'error', message: 'Resume text is empty. Please save a resume first.' });
     }
 
-    const jd = jobDescription || resume.job_description;
+    const jd = jobDescription || resume?.job_description;
     if (!jd) {
       return res.status(400).json({ status: 'error', message: 'Job description is required. Please analyze a job description first.' });
     }
 
     // Reuse cached baseline if present and not forced
     let existingATS = null;
-    if (resume.ats_analysis) {
+    if (resume?.ats_analysis) {
       try { existingATS = JSON.parse(resume.ats_analysis); } catch { existingATS = null; }
     }
     if (existingATS?.llm && !force) {
       console.log('✅ [LLM ATS] Using cached baseline');
-      return res.status(200).json({ status: 'success', message: 'LLM ATS baseline (cached)', data: existingATS.llm });
+      return res.status(200).json({ status: 'success', message: 'LLM ATS baseline (cached)', data: existingATS?.llm });
     }
 
     // Analyzer config (use cheaper defaults inside service)
@@ -281,23 +281,23 @@ router.post('/llm/analysis', authenticateToken, async (req, res) => {
     const tExtractStart = Date.now();
     const requirements = await extractRequirementsLLM(jd, analyzerConfig);
     const tExtractMs = Date.now() - tExtractStart;
-    console.log(`✅ [LLM ATS] Extracted ${requirements.length} requirements`);
+    console.log(`✅ [LLM ATS] Extracted ${requirements?.length || 0} requirements`);
 
     const tMapStart = Date.now();
-    const mapping = await mapRequirementsToResumeLLM(requirements, resume.master_resume_text, analyzerConfig);
+    const mapping = await mapRequirementsToResumeLLM(requirements, resume?.master_resume_text, analyzerConfig);
     const tMapMs = Date.now() - tMapStart;
-    console.log(`✅ [LLM ATS] Mapped ${mapping.mappings.length} requirements, score=${mapping.overall_score}`);
+    console.log(`✅ [LLM ATS] Mapped ${mapping?.mappings?.length || 0} requirements, score=${mapping?.overall_score || 0}`);
 
     // Merge and persist under ats_analysis.llm while keeping top-level compatibility
     const now = new Date().toISOString();
     const newATS = existingATS || {};
     newATS.llm = {
       requirements,
-      mappings: mapping.mappings,
-      overall_score: mapping.overall_score,
-      keyword_gaps: mapping.keyword_gaps,
-      strengths: mapping.strengths,
-      critical_gaps: mapping.critical_gaps,
+      mappings: mapping?.mappings || [],
+      overall_score: mapping?.overall_score || 0,
+      keyword_gaps: mapping?.keyword_gaps || [],
+      strengths: mapping?.strengths || [],
+      critical_gaps: mapping?.critical_gaps || [],
       updated_at: now,
     };
     const usageEntries = [
@@ -323,7 +323,7 @@ router.post('/llm/analysis', authenticateToken, async (req, res) => {
     // Optionally mirror overall score to top-level for convenience
     newATS.ats_score = mapping.overall_score;
 
-    if (resume.id) {
+    if (resume?.id) {
       await pool.query(
         `UPDATE resumes SET ats_analysis = $1, updated_at = NOW() WHERE id = $2`,
         [JSON.stringify(newATS), resume.id]
@@ -355,12 +355,12 @@ router.post('/llm/rescore', authenticateToken, async (req, res) => {
       [resumeId, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       return res.status(404).json({ status: 'error', message: 'Resume not found' });
     }
 
     let ats = null;
-    try { ats = result.rows[0].ats_analysis ? JSON.parse(result.rows[0].ats_analysis) : null; } catch { ats = null; }
+    try { ats = result.rows?.[0]?.ats_analysis ? JSON.parse(result.rows?.[0]?.ats_analysis) : null; } catch { ats = null; }
     if (!ats?.llm) {
       return res.status(400).json({ status: 'error', message: 'LLM ATS baseline not found. Run /api/ats/llm/analysis first.' });
     }
@@ -369,16 +369,16 @@ router.post('/llm/rescore', authenticateToken, async (req, res) => {
     const baselineScore = typeof baseline.overall_score === 'number' ? baseline.overall_score : 0;
 
     // Determine affected requirements
-    let affectedBase = baseline.mappings || [];
+    let affectedBase = baseline?.mappings || [];
     if (section_key) {
-      affectedBase = affectedBase.filter(m => m.section_key === section_key || (m.match_strength && String(m.match_strength).toUpperCase() === 'MISSING'));
+      affectedBase = affectedBase?.filter(m => m.section_key === section_key || (m.match_strength && String(m.match_strength).toUpperCase() === 'MISSING'));
     } else {
       // If section is unknown, fall back to rescoring previously MISSING only
-      affectedBase = affectedBase.filter(m => m.match_strength && String(m.match_strength).toUpperCase() === 'MISSING');
+      affectedBase = affectedBase?.filter(m => m.match_strength && String(m.match_strength).toUpperCase() === 'MISSING');
     }
-    const affected = affectedBase.map(m => ({ requirement_id: m.requirement_id || m.requirementId || m.id, previous: m.match_strength || 'MISSING' }));
+    const affected = affectedBase?.map(m => ({ requirement_id: m.requirement_id || m.requirementId || m.id, previous: m.match_strength || 'MISSING' }));
 
-    if (!affected.length) {
+    if (!affected?.length) {
       console.log('ℹ️ [LLM ATS] No affected requirements for this section change');
       return res.status(200).json({ status: 'success', message: 'No affected requirements', data: { updated_mappings: [], score_delta: 0, new_overall_score: baselineScore } });
     }
@@ -407,7 +407,7 @@ router.post('/llm/rescore', authenticateToken, async (req, res) => {
       updated.set(um.requirement_id, um.match_strength || um.matchStrength);
     }
 
-    baseline.mappings = (baseline.mappings || []).map(m => {
+    baseline.mappings = (baseline?.mappings || []).map(m => {
       const rid = m.requirement_id || m.requirementId || m.id;
       if (updated.has(rid)) {
         return { ...m, match_strength: updated.get(rid) };
@@ -453,16 +453,29 @@ router.get('/llm/usage', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const resumeId = req.query.resumeId ? parseInt(req.query.resumeId, 10) : null;
 
-    // Ensure ats_analysis column exists; otherwise skip with empty usage (older DBs)
     const existsCol = await pool.query(
       `SELECT EXISTS (
          SELECT 1 FROM information_schema.columns 
          WHERE table_name = 'resumes' AND column_name = 'ats_analysis'
        ) AS exists`
     );
+
     const hasAtsAnalysis = Boolean(existsCol?.rows?.[0]?.exists);
+
     if (!hasAtsAnalysis) {
-      return res.status(200).json({ status: 'success', data: { usage: [], totals: { total_calls: 0, analysis_calls: 0, rescore_calls: 0, total_latency_ms: 0, stub_calls: 0 } } });
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          usage: [],
+          totals: {
+            totalCalls: 0,
+            analysisCalls: 0,
+            rescoreCalls: 0,
+            totalLatencyMs: 0,
+            stubCalls: 0,
+          },
+        },
+      });
     }
 
     let result;
@@ -478,26 +491,86 @@ router.get('/llm/usage', authenticateToken, async (req, res) => {
       );
     }
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ status: 'error', message: 'Resume not found' });
+    if (result.rows?.length === 0) {
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          usage: [],
+          totals: {
+            totalCalls: 0,
+            analysisCalls: 0,
+            rescoreCalls: 0,
+            totalLatencyMs: 0,
+            stubCalls: 0,
+          },
+        },
+      });
     }
 
     let ats = null;
-    try { ats = result.rows[0].ats_analysis ? JSON.parse(result.rows[0].ats_analysis) : null; } catch { ats = null; }
-    const usage = Array.isArray(ats?.llm_usage) ? ats.llm_usage : [];
-    const totals = usage.reduce((acc, u) => {
-      acc.total_calls += 1;
-      acc.total_latency_ms += typeof u.latency_ms === 'number' ? u.latency_ms : 0;
-      if (u.phase && String(u.phase).startsWith('analysis')) acc.analysis_calls += 1;
-      if (u.phase === 'rescore') acc.rescore_calls += 1;
-      if (u.stub) acc.stub_calls += 1;
-      return acc;
-    }, { total_calls: 0, analysis_calls: 0, rescore_calls: 0, total_latency_ms: 0, stub_calls: 0 });
+    try {
+      ats = result.rows?.[0]?.ats_analysis
+        ? JSON.parse(result.rows?.[0]?.ats_analysis)
+        : null;
+    } catch {
+      ats = null;
+    }
 
-    return res.status(200).json({ status: 'success', data: { usage, totals } });
+    const usageRaw = Array.isArray(ats?.llm_usage) ? ats?.llm_usage : [];
+
+    // ✅ convert usage to camelCase
+    const usage = usageRaw.map((u) => ({
+      phase: u.phase,
+      latencyMs: u.latency_ms,
+      stub: u.stub,
+      provider: u.provider,
+      model: u.model,
+      inputTokens: u.input_tokens,
+      outputTokens: u.output_tokens,
+      totalTokens: u.total_tokens,
+      createdAt: u.created_at,
+    }));
+
+    // ✅ totals in camelCase
+    const totals = usage.reduce(
+      (acc, u) => {
+        acc.totalCalls += 1;
+        acc.totalLatencyMs += typeof u.latencyMs === 'number' ? u.latencyMs : 0;
+
+        if (u.phase && String(u.phase).startsWith('analysis')) {
+          acc.analysisCalls += 1;
+        }
+
+        if (u.phase === 'rescore') {
+          acc.rescoreCalls += 1;
+        }
+
+        if (u.stub) {
+          acc.stubCalls += 1;
+        }
+
+        return acc;
+      },
+      {
+        totalCalls: 0,
+        analysisCalls: 0,
+        rescoreCalls: 0,
+        totalLatencyMs: 0,
+        stubCalls: 0,
+      }
+    );
+
+    return res.status(200).json({
+      status: 'success',
+      data: { usage, totals },
+    });
   } catch (error) {
     console.error('❌ [LLM ATS] Usage error:', error.message);
-    return res.status(500).json({ status: 'error', message: 'Failed to fetch LLM usage', error: error.message });
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch LLM usage',
+      error: error.message,
+    });
   }
 });
 

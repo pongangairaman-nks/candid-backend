@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { testConnection, initDatabase } from './config/database.js';
 import initFirebase from './config/firebase.js';
+import { initializeFeatureFlagsTable } from './services/featureFlags.js';
+import logger from './services/logger.js';
 import healthRouter from './routes/health.js';
 import uploadRouter from './routes/upload.js';
 import analyzeRouter from './routes/analyze.js';
@@ -14,6 +16,8 @@ import refineSectionRouter from './routes/refineSection.js';
 import llmConfigRouter from './routes/llmConfig.js';
 import atsRouter from './routes/atsAnalysis.js';
 import jobApplicationsRouter from './routes/jobApplications.js';
+import featureFlagsRouter from './routes/featureFlags.js';
+import llmUsageRouter from './routes/llmUsage.js';
 
 // Load environment variables
 dotenv.config();
@@ -26,10 +30,16 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
+// Request timing and logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    next();
+  const startTime = Date.now();
+
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    logger.info(`${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+  });
+
+  next();
 });
 
 // Routes
@@ -40,6 +50,8 @@ app.use('/api/resume', refineSectionRouter);
 app.use('/api/llm', llmConfigRouter);
 app.use('/api/ats', atsRouter);
 app.use('/api/job-applications', jobApplicationsRouter);
+app.use('/api/feature-flags', featureFlagsRouter);
+app.use('/api/llm-usage', llmUsageRouter);
 app.use('/api', uploadRouter);
 app.use('/api', analyzeRouter);
 app.use('/api', generateRouter);
@@ -70,7 +82,7 @@ app.use((req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error('Server error:', err);
+  logger.error('Server error:', { error: err.message, stack: err.stack });
     res.status(500).json({
         status: 'error',
         message: 'Internal server error',
@@ -81,29 +93,34 @@ app.use((err, req, res, next) => {
 // Initialize and start server
 const startServer = async () => {
     try {
-        console.log('🚀 Starting AI Resume Tailoring Platform...\n');
+        logger.info('🚀 Starting AI Resume Tailoring Platform...\n');
 
         // Test database connection
-        console.log('📊 Testing database connection...');
+        logger.info('📊 Testing database connection...');
         await testConnection();
 
         // Initialize database tables
-        console.log('📊 Initializing database tables...');
+        logger.info('📊 Initializing database tables...');
         await initDatabase();
 
+        // Initialize feature flags
+        logger.info('🚩 Initializing feature flags...');
+        await initializeFeatureFlagsTable();
+
         // Initialize Firebase
-        console.log('🔥 Initializing Firebase...');
+        logger.info('🔥 Initializing Firebase...');
         initFirebase();
 
         // Start Express server
         app.listen(PORT, () => {
-            console.log(`\n✅ Server running on http://localhost:${PORT}`);
-            console.log(`✅ Health check: http://localhost:${PORT}/api/ping\n`);
+            logger.info(`✅ Server running on http://localhost:${PORT}`);
+            logger.info(`✅ Health check: http://localhost:${PORT}/api/ping\n`);
         });
     } catch (error) {
-        console.error('❌ Failed to start server:', error.message);
+        logger.error('❌ Failed to start server:', { error: error.message });
         process.exit(1);
     }
 };
 
 startServer();
+

@@ -58,11 +58,11 @@ export const compileLatexToPDF = async (latexContent, outputName = 'resume') => 
         const logFilePath = path.join(tempDir, `${uniqueName}.log`);
         if (fs.existsSync(logFilePath)) {
             const logContent = fs.readFileSync(logFilePath, 'utf-8');
-            const errorLines = logContent.split('\n').filter(line =>
+            const errorLines = logContent?.split('\n')?.filter(line =>
                 line.includes('Error') || line.includes('!')
             ).slice(0, 5);
 
-            if (errorLines.length > 0) {
+            if (errorLines?.length > 0) {
                 console.error('LaTeX errors:', errorLines.join('\n'));
             }
         }
@@ -81,7 +81,7 @@ export const compileLatexToPDF = async (latexContent, outputName = 'resume') => 
 const cleanupLatexAuxFiles = (baseName) => {
     const auxExtensions = ['.aux', '.log', '.out', '.toc', '.tex'];
 
-    auxExtensions.forEach(ext => {
+    auxExtensions?.forEach(ext => {
         const filePath = path.join(tempDir, `${baseName}${ext}`);
         if (fs.existsSync(filePath)) {
             try {

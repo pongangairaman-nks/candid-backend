@@ -112,9 +112,9 @@ router.post('/upload', uploadFields, async (req, res) => {
                     }
                 },
                 extracted: {
-                    latexLength: latexContent.length,
-                    resumeTextLength: resumeText.length,
-                    resumeTextPreview: resumeText.substring(0, 200) + '...'
+                    latexLength: latexContent?.length || 0,
+                    resumeTextLength: resumeText?.length || 0,
+                    resumeTextPreview: resumeText?.substring(0, 200) + '...'
                 }
             }
         });

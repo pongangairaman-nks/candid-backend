@@ -29,19 +29,19 @@ const router = express.Router();
 router.post('/refine-section', authenticateToken, async (req, res) => {
   const userId = req.user.id;
   const {
-    section_key,
-    section_title,
-    section_content,
-    job_description,
-    conversation_history = [],
-    user_message,
+    sectionKey,
+    sectionTitle,
+    sectionContent,
+    jobDescription,
+    conversationHistory = [],
+    userMessage,
   } = req.body;
 
   // Validation
-  if (!section_key || !section_title || !section_content || !user_message) {
+  if (!sectionKey || !sectionTitle || !sectionContent || !userMessage) {
     return res.status(400).json({
       status: 'error',
-      message: 'Missing required fields: section_key, section_title, section_content, user_message',
+      message: 'Missing required fields: sectionKey, sectionTitle, sectionContent, userMessage',
     });
   }
 
@@ -52,19 +52,19 @@ router.post('/refine-section', authenticateToken, async (req, res) => {
       [userId]
     );
 
-    if (configResult.rows.length === 0) {
+    if (configResult.rows?.length === 0) {
       return res.status(400).json({
         status: 'error',
         message: 'LLM configuration not found. Please configure LLM providers first.',
       });
     }
 
-    const userConfig = configResult.rows[0];
+    const userConfig = configResult.rows?.[0];
 
     // Use analyzer provider for refinement (cheaper model)
-    const provider = userConfig.analyzer_provider || 'openai';
-    const model = userConfig.analyzer_model || 'gpt-4o-mini';
-    const apiKey = userConfig.analyzer_api_key;
+    const provider = userConfig?.analyzer_provider || 'openai';
+    const model = userConfig?.analyzer_model || 'gpt-4o-mini';
+    const apiKey = userConfig?.analyzer_api_key;
 
     if (!apiKey) {
       return res.status(400).json({
@@ -78,24 +78,24 @@ router.post('/refine-section', authenticateToken, async (req, res) => {
       provider,
       model,
       apiKey,
-      section_key,
-      section_title,
-      section_content,
-      job_description,
-      conversation_history,
-      user_message,
+      sectionKey,
+      sectionTitle,
+      sectionContent,
+      jobDescription,
+      conversationHistory,
+      userMessage,
     });
 
     // Log usage
     console.log(`✅ Section refinement completed for user ${userId}`);
-    console.log(`   Section: ${section_title}`);
+    console.log(`   Section: ${sectionTitle}`);
     console.log(`   Tokens used: ${result.tokens_used || 'N/A'}`);
 
     res.json({
       status: 'success',
-      refined_content: result.refined_content,
-      refinement_suggestion: result.refinement_suggestion,
-      tokens_used: result.tokens_used,
+      refinedContent: result.refined_content,
+      refinementSuggestion: result.refinement_suggestion,
+      tokensUsed: result.tokens_used,
     });
   } catch (error) {
     console.error('❌ Section refinement error:', error.message);

@@ -69,7 +69,7 @@ export const signupUser = async (email, password, firstName, lastName) => {
       [email.toLowerCase()]
     );
 
-    if (userExists.rows.length > 0) {
+    if (userExists.rows?.length > 0) {
       throw new Error('User with this email already exists');
     }
 
@@ -120,14 +120,14 @@ export const loginUser = async (email, password) => {
       [email.toLowerCase()]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       throw new Error('Invalid email or password');
     }
 
-    const user = result.rows[0];
+    const user = result.rows?.[0];
 
     // Compare password
-    const isPasswordValid = await comparePassword(password, user.password_hash);
+    const isPasswordValid = await comparePassword(password, user?.password_hash);
     if (!isPasswordValid) {
       throw new Error('Invalid email or password');
     }
@@ -139,15 +139,15 @@ export const loginUser = async (email, password) => {
     );
 
     // Generate JWT token
-    const token = generateToken(user.id, user.email);
+    const token = generateToken(user?.id, user?.email);
 
     return {
       user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        isVerified: user.is_verified,
+        id: user?.id,
+        email: user?.email,
+        firstName: user?.first_name,
+        lastName: user?.last_name,
+        isVerified: user?.is_verified,
       },
       token,
     };
@@ -167,12 +167,12 @@ export const requestPasswordReset = async (email) => {
       [email.toLowerCase()]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       // Don't reveal if email exists for security
       return { message: 'If email exists, reset link will be sent' };
     }
 
-    const user = result.rows[0];
+    const user = result.rows?.[0];
 
     // Generate reset token
     const resetToken = generateResetToken();
@@ -181,13 +181,13 @@ export const requestPasswordReset = async (email) => {
     // Save reset token to database
     await pool.query(
       'UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3',
-      [resetToken, resetTokenExpires, user.id]
+      [resetToken, resetTokenExpires, user?.id]
     );
 
     return {
       message: 'If email exists, reset link will be sent',
       resetToken, // In production, send this via email
-      userId: user.id,
+      userId: user?.id,
     };
   } catch (error) {
     throw error;
@@ -206,11 +206,11 @@ export const resetPassword = async (resetToken, newPassword) => {
       [resetToken]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       throw new Error('Invalid or expired reset token');
     }
 
-    const user = result.rows[0];
+    const user = result.rows?.[0];
 
     // Hash new password
     const passwordHash = await hashPassword(newPassword);
@@ -220,7 +220,7 @@ export const resetPassword = async (resetToken, newPassword) => {
       `UPDATE users 
        SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL, updated_at = NOW()
        WHERE id = $2`,
-      [passwordHash, user.id]
+      [passwordHash, user?.id]
     );
 
     return { message: 'Password reset successfully' };
@@ -241,18 +241,18 @@ export const verifyEmail = async (verificationToken) => {
       [verificationToken]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       throw new Error('Invalid or expired verification token');
     }
 
-    const user = result.rows[0];
+    const user = result.rows?.[0];
 
     // Mark email as verified and clear verification token
     await pool.query(
       `UPDATE users 
        SET is_verified = TRUE, verification_token = NULL, verification_token_expires = NULL, updated_at = NOW()
        WHERE id = $1`,
-      [user.id]
+      [user?.id]
     );
 
     return { message: 'Email verified successfully' };
@@ -271,18 +271,18 @@ export const getUserById = async (userId) => {
       [userId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       return null;
     }
 
-    const user = result.rows[0];
+    const user = result.rows?.[0];
     return {
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      isVerified: user.is_verified,
-      createdAt: user.created_at,
+      id: user?.id,
+      email: user?.email,
+      firstName: user?.first_name,
+      lastName: user?.last_name,
+      isVerified: user?.is_verified,
+      createdAt: user?.created_at,
     };
   } catch (error) {
     throw error;
@@ -302,17 +302,17 @@ export const updateUserProfile = async (userId, firstName, lastName) => {
       [firstName, lastName, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       throw new Error('User not found');
     }
 
-    const user = result.rows[0];
+    const user = result.rows?.[0];
     return {
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      isVerified: user.is_verified,
+      id: user?.id,
+      email: user?.email,
+      firstName: user?.first_name,
+      lastName: user?.last_name,
+      isVerified: user?.is_verified,
     };
   } catch (error) {
     throw error;

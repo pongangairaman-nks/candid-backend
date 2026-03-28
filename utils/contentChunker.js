@@ -104,9 +104,9 @@ const extractCompany = (jd) => {
  */
 const extractKeywords = (text, keywords) => {
   const results = [];
-  const lines = text.split('\n');
+  const lines = text?.split('\n');
 
-  lines.forEach(line => {
+  lines?.forEach(line => {
     keywords.forEach(keyword => {
       if (line.toLowerCase().includes(keyword.toLowerCase())) {
         results.push(line.trim());
@@ -114,7 +114,7 @@ const extractKeywords = (text, keywords) => {
     });
   });
 
-  return results.slice(0, 5); // Limit to 5 items
+  return results?.slice(0, 5); // Limit to 5 items
 };
 
 /**
@@ -125,10 +125,10 @@ const extractKeywords = (text, keywords) => {
  */
 export const getRelevantChunks = (resumeChunks, jdSummary) => {
   const relevant = {
-    header: resumeChunks.header || '',
-    experience: resumeChunks.experience || '',
-    skills: resumeChunks.skills || '',
-    education: resumeChunks.education || '',
+    header: resumeChunks?.header || '',
+    experience: resumeChunks?.experience || '',
+    skills: resumeChunks?.skills || '',
+    education: resumeChunks?.education || '',
   };
 
   // Always include header and experience
@@ -144,22 +144,22 @@ export const getRelevantChunks = (resumeChunks, jdSummary) => {
  * @returns {string} Full LaTeX resume
  */
 export const reconstructResume = (chunks) => {
-  let reconstructed = chunks.header || '';
+  let reconstructed = chunks?.header || '';
 
-  if (chunks.experience) {
-    reconstructed += '\n\n\\section{Experience}\n' + chunks.experience;
+  if (chunks?.experience) {
+    reconstructed += '\n\n\\section{Experience}\n' + chunks?.experience;
   }
-  if (chunks.skills) {
-    reconstructed += '\n\n\\section{Skills}\n' + chunks.skills;
+  if (chunks?.skills) {
+    reconstructed += '\n\n\\section{Skills}\n' + chunks?.skills;
   }
-  if (chunks.education) {
-    reconstructed += '\n\n\\section{Education}\n' + chunks.education;
+  if (chunks?.education) {
+    reconstructed += '\n\n\\section{Education}\n' + chunks?.education;
   }
-  if (chunks.projects) {
-    reconstructed += '\n\n\\section{Projects}\n' + chunks.projects;
+  if (chunks?.projects) {
+    reconstructed += '\n\n\\section{Projects}\n' + chunks?.projects;
   }
-  if (chunks.certifications) {
-    reconstructed += '\n\n\\section{Certifications}\n' + chunks.certifications;
+  if (chunks?.certifications) {
+    reconstructed += '\n\n\\section{Certifications}\n' + chunks?.certifications;
   }
 
   reconstructed += '\n\n\\end{document}';

@@ -3,14 +3,20 @@ import pool from '../config/database.js';
 import { analyzeJobDescription } from '../services/geminiService.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getUserLLMConfig } from './llmConfig.js';
+import { getTieredLLMConfig } from '../services/llmTierService.js';
+import { getUserFeatureFlags } from '../services/featureFlags.js';
+import { getAnalyzeCacheKey, getAnalysisFromCache, storeAnalysisInCache } from '../services/cachingService.js';
+import { logLLMOperation, logger } from '../services/logger.js';
+import { analyzeLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
-// POST /api/analyze - Analyze job description using Gemini
-router.post('/analyze', authenticateToken, async (req, res) => {
+// POST /api/analyze - Analyze job description with caching and tiered models
+router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
     try {
-        const { resumeId, jobDescription } = req.body;
+        const { resumeId, jobDescription, skipCache = false } = req.body;
         const userId = req.user.id;
+        const startTime = Date.now();
 
         // Validate input
         if (!jobDescription) {
@@ -20,15 +26,15 @@ router.post('/analyze', authenticateToken, async (req, res) => {
             });
         }
 
-        console.log(`📊 Analyzing job description for user ID: ${userId}`);
+        logger.info(`📊 Analyzing job description for user ID: ${userId}`);
 
         // Fetch the user's first resume (master template)
         const resumeResult = await pool.query(
-            'SELECT id, master_resume_text FROM resumes WHERE user_id = $1 ORDER BY id ASC LIMIT 1',
+            'SELECT id, masterResumeText FROM resumes WHERE userId = $1 ORDER BY id ASC LIMIT 1',
             [userId]
         );
 
-        if (resumeResult.rows.length === 0) {
+        if (resumeResult.rows?.length === 0) {
             return res.status(404).json({
                 status: 'error',
                 message: 'No resume found for user. Please save a master template first.'
@@ -37,8 +43,7 @@ router.post('/analyze', authenticateToken, async (req, res) => {
 
         const resume = resumeResult.rows[0];
         const actualResumeId = resume.id;
-
-        const resumeText = resume.master_resume_text;
+        const resumeText = resume.masterResumeText;
 
         if (!resumeText) {
             return res.status(400).json({
@@ -47,56 +52,98 @@ router.post('/analyze', authenticateToken, async (req, res) => {
             });
         }
 
-        // Get user's LLM configuration (required) - get analyzer config
-        const userConfig = await getUserLLMConfig(userId, 'analyzer');
-        if (!userConfig) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'LLM configuration not found. Please configure your LLM provider and API key in the Configuration page.'
-            });
+        // Check feature flags
+        const flags = await getUserFeatureFlags(userId);
+        const enableCache = flags.enableAnalyzeCache;
+
+        // Check cache first
+        let analysis = null;
+        let fromCache = false;
+
+        if (enableCache && !skipCache) {
+            const cacheKey = getAnalyzeCacheKey(jobDescription, resumeText);
+            analysis = await getAnalysisFromCache(userId, cacheKey);
+            fromCache = !!analysis;
         }
 
-        console.log(`🔧 Using analyzer: ${userConfig.provider} - ${userConfig.model}`);
+        // If not in cache, call LLM with tiered model
+        if (!analysis) {
+            try {
+                const userConfig = await getTieredLLMConfig(userId, 'analyzer', 'jd_analysis');
+                if (!userConfig) {
+                    return res.status(400).json({
+                        status: 'error',
+                        message: 'LLM configuration not found. Please configure your LLM provider and API key in the Configuration page.'
+                    });
+                }
 
-        // Analyze using user's configured analyzer model
-        console.log('🤖 Calling LLM API for analysis...');
-        const analysis = await analyzeJobDescription(jobDescription, resumeText, userConfig);
+                logger.info(`🔧 Using analyzer: ${userConfig.provider} - ${userConfig.model} (${userConfig.tier})`);
+                logger.info('🤖 Calling LLM API for analysis...');
+
+                analysis = await analyzeJobDescription(jobDescription, resumeText, userConfig);
+
+                // Store in cache
+                if (enableCache) {
+                    const cacheKey = getAnalyzeCacheKey(jobDescription, resumeText);
+                    await storeAnalysisInCache(userId, cacheKey, analysis);
+                }
+
+                // Log LLM operation
+                const latency = Date.now() - startTime;
+                logLLMOperation({
+                    userId,
+                    phase: 'analyze',
+                    provider: userConfig.provider,
+                    model: userConfig.model,
+                    latencyMs: latency,
+                    endpoint: '/api/analyze',
+                    status: 'success',
+                });
+            } catch (analysisError) {
+                logger.error(`❌ Analysis failed: ${analysisError.message}`);
+                return res.status(500).json({
+                    status: 'error',
+                    message: `Failed to analyze job description: ${analysisError.message}`,
+                });
+            }
+        }
 
         // Update database with analysis and job description
         await pool.query(
             `UPDATE resumes 
-       SET job_description = $1, analysis_json = $2, updated_at = NOW()
+       SET jobDescription = $1, analysisJson = $2, updatedAt = NOW()
        WHERE id = $3`,
             [jobDescription, JSON.stringify(analysis), actualResumeId]
         );
 
-        console.log('✅ Analysis saved to database');
+        logger.info('✅ Analysis saved to database');
 
         res.status(200).json({
             status: 'success',
-            message: 'Job description analyzed successfully',
+            message: fromCache ? 'Job description analyzed successfully (cached)' : 'Job description analyzed successfully',
             data: {
                 resumeId: actualResumeId,
+                cached: fromCache,
                 analysis: {
-                    keywords: analysis.primary_keywords,
-                    missing_skills: analysis.missing_skills,
-                    role_focus: analysis.role_focus
+                    keywords: analysis.primaryKeywords,
+                    missingSkills: analysis.missingSkills,
+                    roleFocus: analysis.roleFocus
                 },
                 stats: {
-                    keywordsCount: analysis.primary_keywords.length,
-                    missingSkillsCount: analysis.missing_skills.length,
-                    jdLength: jobDescription.length
+                    keywordsCount: analysis.primaryKeywords?.length || 0,
+                    missingSkillsCount: analysis.missingSkills?.length || 0,
+                    jdLength: jobDescription?.length || 0
                 }
             }
         });
 
     } catch (error) {
-        console.error('❌ Analysis error:', error.message);
+        logger.error(`❌ Analysis error: ${error.message}`);
 
         res.status(500).json({
             status: 'error',
             message: 'Failed to analyze job description',
-            error: error.message
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });

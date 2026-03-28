@@ -32,38 +32,38 @@ export const calculateATSScore = async (resumeText, jobDescription, analysis = n
     const scores = {};
 
     // 1. PRIMARY KEYWORDS SCORING (40% weight)
-    const primaryKeywords = jobAnalysis.primary_keywords || [];
-    const primaryMatches = primaryKeywords.filter(kw =>
+    const primaryKeywords = jobAnalysis.primaryKeywords || [];
+    const primaryMatches = primaryKeywords?.filter(kw =>
       matchKeywordInText(resumeTextLower, kw.toLowerCase())
     );
     scores.primaryKeywords = {
-      matched: primaryMatches.length,
-      total: primaryKeywords.length,
-      percentage: primaryKeywords.length > 0 ? (primaryMatches.length / primaryKeywords.length) * 100 : 0,
+      matched: primaryMatches?.length || 0,
+      total: primaryKeywords?.length || 0,
+      percentage: primaryKeywords?.length > 0 ? (primaryMatches?.length / primaryKeywords?.length) * 100 : 0,
       weight: 0.40,
     };
 
     // 2. SECONDARY KEYWORDS SCORING (25% weight)
-    const secondaryKeywords = jobAnalysis.secondary_keywords || [];
-    const secondaryMatches = secondaryKeywords.filter(kw =>
+    const secondaryKeywords = jobAnalysis.secondaryKeywords || [];
+    const secondaryMatches = secondaryKeywords?.filter(kw =>
       matchKeywordInText(resumeTextLower, kw.toLowerCase())
     );
     scores.secondaryKeywords = {
-      matched: secondaryMatches.length,
-      total: secondaryKeywords.length,
-      percentage: secondaryKeywords.length > 0 ? (secondaryMatches.length / secondaryKeywords.length) * 100 : 0,
+      matched: secondaryMatches?.length || 0,
+      total: secondaryKeywords?.length || 0,
+      percentage: secondaryKeywords?.length > 0 ? (secondaryMatches?.length / secondaryKeywords?.length) * 100 : 0,
       weight: 0.25,
     };
 
     // 3. MATCHING SKILLS SCORING (15% weight)
-    const matchingSkills = jobAnalysis.matching_skills || [];
-    const missingSkills = jobAnalysis.missing_skills || [];
-    const totalSkillsInJD = matchingSkills.length + missingSkills.length;
+    const matchingSkills = jobAnalysis.matchingSkills || [];
+    const missingSkills = jobAnalysis.missingSkills || [];
+    const totalSkillsInJD = (matchingSkills?.length || 0) + (missingSkills?.length || 0);
     scores.matchingSkills = {
-      matched: matchingSkills.length,
-      missing: missingSkills.length,
-      total: totalSkillsInJD,
-      percentage: totalSkillsInJD > 0 ? (matchingSkills.length / totalSkillsInJD) * 100 : 0,
+      matched: matchingSkills?.length || 0,
+      missing: missingSkills?.length || 0,
+      total: totalSkillsInJD || 0,
+      percentage: totalSkillsInJD > 0 ? (matchingSkills?.length / totalSkillsInJD) * 100 : 0,
       weight: 0.15,
     };
 
@@ -75,7 +75,7 @@ export const calculateATSScore = async (resumeText, jobDescription, analysis = n
 
     // 5. SENIORITY ALIGNMENT SCORING (10% weight)
     scores.seniorityAlignment = {
-      score: validateSeniorityAlignment(resumeText, jobAnalysis.seniority_level),
+      score: validateSeniorityAlignment(resumeText, jobAnalysis.seniorityLevel),
       weight: 0.10,
     };
 
@@ -97,22 +97,22 @@ export const calculateATSScore = async (resumeText, jobDescription, analysis = n
     console.log(`✅ ATS Score calculated: ${totalScore}% (${atsStatus})`);
 
     return {
-      ats_score: totalScore,
-      ats_status: atsStatus,
+      atsScore: totalScore,
+      atsStatus: atsStatus,
       breakdown: {
-        primary_keywords: scores.primaryKeywords,
-        secondary_keywords: scores.secondaryKeywords,
-        matching_skills: scores.matchingSkills,
-        format_quality: scores.formatQuality,
-        seniority_alignment: scores.seniorityAlignment,
+        primaryKeywords: scores.primaryKeywords,
+        secondaryKeywords: scores.secondaryKeywords,
+        matchingSkills: scores.matchingSkills,
+        formatQuality: scores.formatQuality,
+        seniorityAlignment: scores.seniorityAlignment,
       },
-      missing_skills: missingSkills,
-      matching_skills: matchingSkills,
-      optimization_tips: jobAnalysis.ats_optimization_tips || [],
+      missingSkills: missingSkills,
+      matchingSkills: matchingSkills,
+      optimizationTips: jobAnalysis.atsOptimizationTips || [],
       suggestions: suggestions,
-      experience_gaps: jobAnalysis.experience_gaps || [],
-      role_focus: jobAnalysis.role_focus,
-      seniority_level: jobAnalysis.seniority_level,
+      experienceGaps: jobAnalysis.experienceGaps || [],
+      roleFocus: jobAnalysis.roleFocus,
+      seniorityLevel: jobAnalysis.seniorityLevel,
     };
   } catch (error) {
     console.error('❌ ATS scoring error:', error.message);
@@ -174,27 +174,27 @@ function validateResumeFormat(resumeText) {
     resumeText.toLowerCase().includes(header)
   );
 
-  if (foundHeaders.length < 3) {
+  if (foundHeaders?.length || 0 < 3) {
     formatScore -= 20; // Missing key sections
   }
 
   // Check for excessive special characters (indicates poor formatting)
-  const specialCharCount = (resumeText.match(/[^a-zA-Z0-9\s\n\-.,()]/g) || []).length;
-  if (specialCharCount > resumeText.length * 0.05) {
+  const specialCharCount = (resumeText?.match(/[^a-zA-Z0-9\s\n\-.,()]/g) || [])?.length;
+  if (specialCharCount > (resumeText?.length || 0) * 0.05) {
     formatScore -= 15; // Too many special characters
   }
 
   // Check for reasonable line length (not too long)
-  const lines = resumeText.split('\n');
-  const longLines = lines.filter(line => line.length > 150).length;
-  if (longLines > lines.length * 0.3) {
+  const lines = resumeText?.split('\n') || [];
+  const longLines = lines?.filter(line => line?.length || 0 > 150)?.length || 0;
+  if (longLines > (lines?.length || 0) * 0.3) {
     formatScore -= 10; // Too many long lines
   }
 
   // Check for consistent date formatting
   const datePattern = /(\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}\/\d{4}|[A-Za-z]+ \d{4})/g;
-  const dates = resumeText.match(datePattern) || [];
-  if (dates.length < 2) {
+  const dates = resumeText?.match(datePattern) || [];
+  if (dates?.length || 0 < 2) {
     formatScore -= 10; // Missing dates
   }
 
@@ -221,19 +221,19 @@ function validateSeniorityAlignment(resumeText, requiredSeniority) {
 
   // Check for seniority indicators matching required level
   if (requiredSeniority && seniorityIndicators[requiredSeniority]) {
-    const matchedIndicators = seniorityIndicators[requiredSeniority].filter(indicator =>
+    const matchedIndicators = seniorityIndicators[requiredSeniority]?.filter(indicator =>
       resumeTextLower.includes(indicator)
     );
 
-    if (matchedIndicators.length > 0) {
+    if (matchedIndicators?.length || 0 > 0) {
       alignmentScore = 85; // Good match
     }
   }
 
   // Check for years of experience mentions
   const yearsPattern = /(\d+)\s*(?:\+)?\s*years?/gi;
-  const yearsMatches = resumeText.match(yearsPattern) || [];
-  if (yearsMatches.length > 0) {
+  const yearsMatches = resumeText?.match(yearsPattern) || [];
+  if (yearsMatches?.length || 0 > 0) {
     alignmentScore = Math.min(100, alignmentScore + 10);
   }
 
@@ -248,10 +248,10 @@ function generateImprovementSuggestions(scores, jobAnalysis, resumeText) {
 
   // Primary keywords suggestions
   if (scores.primaryKeywords.percentage < 80) {
-    const missingPrimary = jobAnalysis.primary_keywords.filter(kw =>
+    const missingPrimary = jobAnalysis.primaryKeywords?.filter(kw =>
       !resumeText.toLowerCase().includes(kw.toLowerCase())
     );
-    if (missingPrimary.length > 0) {
+    if (missingPrimary?.length > 0) {
       suggestions.push({
         priority: 'high',
         category: 'keywords',
@@ -262,11 +262,11 @@ function generateImprovementSuggestions(scores, jobAnalysis, resumeText) {
   }
 
   // Missing skills suggestions
-  if (jobAnalysis.missing_skills && jobAnalysis.missing_skills.length > 0) {
+  if (jobAnalysis.missingSkills && jobAnalysis.missingSkills?.length > 0) {
     suggestions.push({
       priority: 'high',
       category: 'skills',
-      message: `Highlight experience with: ${jobAnalysis.missing_skills.slice(0, 3).join(', ')}`,
+      message: `Highlight experience with: ${jobAnalysis.missingSkills?.slice(0, 3).join(', ')}`,
       impact: 'Directly addresses job requirements',
     });
   }
@@ -286,17 +286,17 @@ function generateImprovementSuggestions(scores, jobAnalysis, resumeText) {
     suggestions.push({
       priority: 'medium',
       category: 'experience',
-      message: `Emphasize ${jobAnalysis.seniority_level || 'relevant'} level experience and achievements`,
+      message: `Emphasize ${jobAnalysis.seniorityLevel || 'relevant'} level experience and achievements`,
       impact: 'Better alignment with role requirements',
     });
   }
 
   // Secondary keywords suggestions
-  if (scores.secondaryKeywords.percentage < 60 && jobAnalysis.secondary_keywords.length > 0) {
+  if (scores.secondaryKeywords.percentage < 60 && jobAnalysis.secondaryKeywords?.length > 0) {
     suggestions.push({
       priority: 'low',
       category: 'keywords',
-      message: `Consider adding: ${jobAnalysis.secondary_keywords.slice(0, 2).join(', ')}`,
+      message: `Consider adding: ${jobAnalysis.secondaryKeywords?.slice(0, 2)?.join(', ') || ''}`,
       impact: 'Nice-to-have skills that strengthen candidacy',
     });
   }
@@ -309,13 +309,13 @@ function generateImprovementSuggestions(scores, jobAnalysis, resumeText) {
  */
 export const formatATSResponse = (atsAnalysis) => {
   return {
-    score: atsAnalysis.ats_score,
-    status: atsAnalysis.ats_status,
-    message: getATSStatusMessage(atsAnalysis.ats_score),
+    score: atsAnalysis.atsScore,
+    status: atsAnalysis.atsStatus,
+    message: getATSStatusMessage(atsAnalysis.atsScore),
     breakdown: atsAnalysis.breakdown,
     suggestions: atsAnalysis.suggestions,
-    tips: atsAnalysis.optimization_tips,
-    gaps: atsAnalysis.experience_gaps,
+    tips: atsAnalysis.optimizationTips,
+    gaps: atsAnalysis.experienceGaps,
   };
 };
 

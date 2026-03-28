@@ -9,11 +9,11 @@ const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
 });
 
-// Test database connection
+// Test DB connection
 export const testConnection = async () => {
   try {
     const client = await pool.connect();
@@ -26,11 +26,11 @@ export const testConnection = async () => {
   }
 };
 
-// Initialize database tables
+// Initialize DB
 export const initDatabase = async () => {
   const client = await pool.connect();
   try {
-    // Users table
+    // USERS
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -49,11 +49,11 @@ export const initDatabase = async () => {
       );
     `);
 
-    // Create index on email for faster lookups
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
-    
+
+    // RESUMES
     await client.query(`
       CREATE TABLE IF NOT EXISTS resumes (
         id SERIAL PRIMARY KEY,
@@ -72,7 +72,8 @@ export const initDatabase = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    
+
+    // FILES
     await client.query(`
       CREATE TABLE IF NOT EXISTS files (
         id SERIAL PRIMARY KEY,
@@ -84,19 +85,22 @@ export const initDatabase = async () => {
       );
     `);
 
+    // LLM CONFIGS
     await client.query(`
       CREATE TABLE IF NOT EXISTS llm_configs (
         id SERIAL PRIMARY KEY,
         user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-        analyzer_provider VARCHAR(50) NOT NULL DEFAULT 'claude',
-        analyzer_model VARCHAR(100) NOT NULL DEFAULT 'claude-3-5-haiku-20241022',
+        analyzer_provider VARCHAR(50) DEFAULT 'claude',
+        analyzer_model VARCHAR(100) DEFAULT 'claude-3-5-haiku-20241022',
         analyzer_api_key TEXT,
-        generator_provider VARCHAR(50) NOT NULL DEFAULT 'openai',
-        generator_model VARCHAR(100) NOT NULL DEFAULT 'gpt-4o-mini',
+        generator_provider VARCHAR(50) DEFAULT 'openai',
+        generator_model VARCHAR(100) DEFAULT 'gpt-4o-mini',
         generator_api_key TEXT,
         master_content TEXT,
         master_resume_prompt TEXT,
         master_cover_letter_prompt TEXT,
+        master_resume TEXT,
+        master_cover_letter TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -104,9 +108,71 @@ export const initDatabase = async () => {
     `);
 
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_llm_configs_user_id ON llm_configs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_llm_configs_user_id 
+      ON llm_configs(user_id);
     `);
 
+    // FEATURE FLAGS
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS feature_flags (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        flag_name VARCHAR(100) NOT NULL,
+        flag_value BOOLEAN DEFAULT true,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, flag_name)
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_feature_flags_user_id_flag_name
+      ON feature_flags(user_id, flag_name);
+    `);
+
+    // LLM USAGE LOGS
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS llm_usage_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        endpoint VARCHAR(100) NOT NULL,
+        phase VARCHAR(50) NOT NULL,
+        provider VARCHAR(50) NOT NULL,
+        model VARCHAR(100),
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        total_tokens INTEGER,
+        latency_ms INTEGER,
+        status VARCHAR(20),
+        error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_llm_usage_logs_user_id_created_at
+      ON llm_usage_logs(user_id, created_at);
+    `);
+
+    // ANALYZE CACHE
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS analyze_cache (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        content_hash VARCHAR(64) NOT NULL,
+        analysis_json JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, content_hash)
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_analyze_cache_user_id_hash
+      ON analyze_cache(user_id, content_hash);
+    `);
+
+    // COVER LETTERS
     await client.query(`
       CREATE TABLE IF NOT EXISTS cover_letters (
         id SERIAL PRIMARY KEY,
@@ -122,12 +188,13 @@ export const initDatabase = async () => {
       );
     `);
 
+    // JOB APPLICATIONS
     await client.query(`
       CREATE TABLE IF NOT EXISTS job_applications (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        position VARCHAR(255) NOT NULL,
-        company_name VARCHAR(255) NOT NULL,
+        position VARCHAR(255),
+        company_name VARCHAR(255),
         industry VARCHAR(100),
         company_url TEXT,
         job_url TEXT,
@@ -137,8 +204,8 @@ export const initDatabase = async () => {
         applied_date DATE,
         interview_date DATE,
         notes TEXT,
-        resume_id INTEGER REFERENCES resumes(id) ON DELETE SET NULL,
-        cover_letter_id INTEGER REFERENCES cover_letters(id) ON DELETE SET NULL,
+        resume_id INTEGER REFERENCES resumes(id),
+        cover_letter_id INTEGER REFERENCES cover_letters(id),
         resume_pdf_url TEXT,
         cover_letter_pdf_url TEXT,
         generated_resume_latex TEXT,
@@ -151,32 +218,10 @@ export const initDatabase = async () => {
     `);
 
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON job_applications(user_id);
+      CREATE INDEX IF NOT EXISTS idx_job_applications_user_id 
+      ON job_applications(user_id);
     `);
 
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status);
-    `);
-
-    // Add missing columns if they don't exist (migration for existing databases)
-    await client.query(`
-      ALTER TABLE job_applications
-      ADD COLUMN IF NOT EXISTS job_description TEXT,
-      ADD COLUMN IF NOT EXISTS generated_resume_latex TEXT,
-      ADD COLUMN IF NOT EXISTS generated_cover_letter_latex TEXT,
-      ADD COLUMN IF NOT EXISTS resume_prompt TEXT,
-      ADD COLUMN IF NOT EXISTS cover_letter_prompt TEXT,
-      ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-    `);
-
-    // Add master prompt columns to llm_configs if they don't exist
-    await client.query(`
-      ALTER TABLE llm_configs
-      ADD COLUMN IF NOT EXISTS master_resume_prompt TEXT,
-      ADD COLUMN IF NOT EXISTS master_cover_letter_prompt TEXT,
-      ADD COLUMN IF NOT EXISTS use_latex_template BOOLEAN DEFAULT TRUE;
-    `);
-    
     console.log('✅ Database tables initialized');
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);

@@ -114,10 +114,10 @@ export const mapRequirementsToResumeLLM = async (requirements, resumeText, userC
     }));
     return {
       mappings,
-      overall_score: 72,
-      keyword_gaps: ['AWS', 'CI/CD'],
+      overallScore: 72,
+      keywordGaps: ['AWS', 'CI/CD'],
       strengths: ['Strong JS/TS background'],
-      critical_gaps: ['No explicit cloud tooling'],
+      criticalGaps: ['No explicit cloud tooling'],
     };
   }
   const provider = userConfig?.provider || 'openai';
@@ -127,8 +127,8 @@ export const mapRequirementsToResumeLLM = async (requirements, resumeText, userC
 
   const system = 'You are an ATS analyst. Compare requirements vs resume. Output JSON only.';
   const user = [
-    'Given requirements and resume, map each requirement to: { "requirement_id": "r1", "match_strength": "STRONG|PARTIAL|WEAK|MISSING", "evidence": "short quote or null", "section_key": "summary|experience.exp_1|skills|education|projects|other", "suggestion": "advice or null" }.',
-    'Return: { "mappings": [...], "overall_score": 0-100, "keyword_gaps": [...], "strengths": [...], "critical_gaps": [...] }',
+    'Given requirements and resume, map each requirement to: { "requirementId": "r1", "matchStrength": "STRONG|PARTIAL|WEAK|MISSING", "evidence": "short quote or null", "sectionKey": "summary|experience.exp_1|skills|education|projects|other", "suggestion": "advice or null" }.',
+    'Return: { "mappings": [...], "overallScore": 0-100, "keywordGaps": [...], "strengths": [...], "criticalGaps": [...] }',
     '',
     'Requirements:',
     JSON.stringify({ requirements }),
@@ -139,21 +139,21 @@ export const mapRequirementsToResumeLLM = async (requirements, resumeText, userC
 
   const { text } = await callLLM({ provider, model, apiKey, system, user, maxTokens: 3000, temperature: 0.2 });
   const json = parseJson(text);
-  if (!json.mappings || typeof json.overall_score !== 'number') throw new Error('Invalid mapping JSON');
+  if (!json.mappings || typeof json.overallScore !== 'number') throw new Error('Invalid mapping JSON');
   return {
     mappings: json.mappings,
-    overall_score: json.overall_score,
-    keyword_gaps: Array.isArray(json.keyword_gaps) ? json.keyword_gaps : [],
+    overallScore: json.overallScore,
+    keywordGaps: Array.isArray(json.keywordGaps) ? json.keywordGaps : [],
     strengths: Array.isArray(json.strengths) ? json.strengths : [],
-    critical_gaps: Array.isArray(json.critical_gaps) ? json.critical_gaps : [],
+    criticalGaps: Array.isArray(json.criticalGaps) ? json.criticalGaps : [],
   };
 };
 
 export const incrementalRescoreLLM = async ({ affectedMappings, beforeText, afterText, baselineScore }, userConfig) => {
   if (process.env.LLM_STUB === 'true') {
-    const updated = (affectedMappings || []).slice(0, 2).map(a => ({ requirement_id: a.requirement_id, match_strength: 'STRONG', was: a.previous || 'MISSING' }));
-    const delta = Math.min(15, updated.length * 5);
-    return { updated_mappings: updated, score_delta: delta, new_overall_score: baselineScore + delta };
+    const updated = (affectedMappings || []).slice(0, 2).map(a => ({ requirementId: a.requirementId, matchStrength: 'STRONG', was: a.previous || 'MISSING' }));
+    const delta = Math.min(15, updated?.length || 0 * 5);
+    return { updatedMappings: updated, scoreDelta: delta, newOverallScore: baselineScore + delta };
   }
   const provider = userConfig?.provider || 'openai';
   const model = userConfig?.model || cheapDefaults[provider] || 'gpt-4o-mini';
@@ -162,8 +162,8 @@ export const incrementalRescoreLLM = async ({ affectedMappings, beforeText, afte
 
   const system = 'You are an ATS analyst. Re-score only affected requirements. JSON only.';
   const user = [
-    'A resume section changed. Re-evaluate only these requirements (array of objects with requirement_id and previous match_strength).',
-    JSON.stringify({ affected_requirements: affectedMappings, baseline_score: baselineScore }),
+    'A resume section changed. Re-evaluate only these requirements (array of objects with requirementId and previous matchStrength).',
+    JSON.stringify({ affectedRequirements: affectedMappings, baselineScore: baselineScore }),
     '',
     'Old section:',
     beforeText || '',
@@ -171,16 +171,16 @@ export const incrementalRescoreLLM = async ({ affectedMappings, beforeText, afte
     'New section:',
     afterText || '',
     '',
-    'Return JSON: { "updated_mappings": [ { "requirement_id": "r2", "match_strength": "STRONG", "was": "PARTIAL" } ], "score_delta": +/-N, "new_overall_score": N }',
+    'Return JSON: { "updatedMappings": [ { "requirementId": "r2", "matchStrength": "STRONG", "was": "PARTIAL" } ], "scoreDelta": +/-N, "newOverallScore": N }',
   ].join('\n');
 
   const { text } = await callLLM({ provider, model, apiKey, system, user, maxTokens: 1200, temperature: 0.1 });
   const json = parseJson(text);
-  if (!Array.isArray(json.updated_mappings)) throw new Error('Invalid incremental JSON');
-  if (typeof json.new_overall_score !== 'number') json.new_overall_score = baselineScore + (json.score_delta || 0);
+  if (!Array.isArray(json.updatedMappings)) throw new Error('Invalid incremental JSON');
+  if (typeof json.newOverallScore !== 'number') json.newOverallScore = baselineScore + (json.scoreDelta || 0);
   return {
-    updated_mappings: json.updated_mappings,
-    score_delta: typeof json.score_delta === 'number' ? json.score_delta : (json.new_overall_score - baselineScore),
-    new_overall_score: json.new_overall_score,
+    updatedMappings: json.updatedMappings,
+    scoreDelta: typeof json.scoreDelta === 'number' ? json.scoreDelta : (json.newOverallScore - baselineScore),
+    newOverallScore: json.newOverallScore,
   };
 };

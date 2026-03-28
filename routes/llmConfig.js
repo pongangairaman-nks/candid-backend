@@ -79,7 +79,7 @@ router.get('/models/:provider', async (req, res) => {
         const models = AVAILABLE_MODELS['claude'] || [];
         return res.json({ 
           models, 
-          count: models.length,
+          count: models?.length || 0,
           provider: 'claude',
           source: 'cached'
         });
@@ -100,7 +100,7 @@ router.get('/models/:provider', async (req, res) => {
           const models = AVAILABLE_MODELS['claude'] || [];
           return res.json({ 
             models, 
-            count: models.length,
+            count: models?.length || 0,
             provider: 'claude',
             source: 'cached',
             warning: `API returned ${response.status}`
@@ -125,21 +125,21 @@ router.get('/models/:provider', async (req, res) => {
           }
         }
 
-        if (models.length === 0) {
+        if (models?.length === 0) {
           console.warn('⚠️ No Claude models returned from API, using cached models');
           const cachedModels = AVAILABLE_MODELS['claude'] || [];
           return res.json({ 
             models: cachedModels, 
-            count: cachedModels.length,
+            count: cachedModels?.length || 0,
             provider: 'claude',
             source: 'cached'
           });
         }
 
-        console.log(`✅ Found ${models.length} Claude models from API`);
+        console.log(`✅ Found ${models?.length || 0} Claude models from API`);
         return res.json({ 
           models, 
-          count: models.length,
+          count: models?.length || 0,
           provider: 'claude',
           source: 'api'
         });
@@ -148,7 +148,7 @@ router.get('/models/:provider', async (req, res) => {
         const models = AVAILABLE_MODELS['claude'] || [];
         return res.json({ 
           models, 
-          count: models.length,
+          count: models?.length || 0,
           provider: 'claude',
           source: 'cached',
           error: apiError.message
@@ -160,7 +160,7 @@ router.get('/models/:provider', async (req, res) => {
         const models = AVAILABLE_MODELS['openai'] || [];
         return res.json({ 
           models, 
-          count: models.length,
+          count: models?.length || 0,
           provider: 'openai',
           source: 'cached'
         });
@@ -186,21 +186,21 @@ router.get('/models/:provider', async (req, res) => {
           }
         }
 
-        if (models.length === 0) {
+        if (models?.length === 0) {
           console.warn('⚠️ No OpenAI chat models found, using cached models');
           const cachedModels = AVAILABLE_MODELS['openai'] || [];
           return res.json({ 
             models: cachedModels, 
-            count: cachedModels.length,
+            count: cachedModels?.length || 0,
             provider: 'openai',
             source: 'cached'
           });
         }
 
-        console.log(`✅ Found ${models.length} OpenAI models from API`);
+        console.log(`✅ Found ${models?.length || 0} OpenAI models from API`);
         return res.json({ 
           models, 
-          count: models.length,
+          count: models?.length || 0,
           provider: 'openai',
           source: 'api'
         });
@@ -209,7 +209,7 @@ router.get('/models/:provider', async (req, res) => {
         const models = AVAILABLE_MODELS['openai'] || [];
         return res.json({ 
           models, 
-          count: models.length,
+          count: models?.length || 0,
           provider: 'openai',
           source: 'cached',
           error: apiError.message
@@ -219,17 +219,17 @@ router.get('/models/:provider', async (req, res) => {
       // Return static models for other providers
       const models = AVAILABLE_MODELS[provider] || [];
       
-      if (models.length === 0) {
+      if (models?.length === 0) {
         return res.status(404).json({ 
           error: `No models found for provider: ${provider}`,
           models: [] 
         });
       }
 
-      console.log(`✅ Found ${models.length} ${provider} models`);
+      console.log(`✅ Found ${models?.length || 0} ${provider} models`);
       return res.json({ 
         models, 
-        count: models.length,
+        count: models?.length || 0,
         provider: provider,
         source: 'cached'
       });
@@ -276,8 +276,8 @@ router.get('/models/claude', async (req, res) => {
       }
     }
 
-    console.log(`✅ Found ${models.length} Claude models`);
-    res.json({ models, count: models.length });
+    console.log(`✅ Found ${models?.length || 0} Claude models`);
+    res.json({ models, count: models?.length || 0 });
   } catch (error) {
     console.error('❌ Error fetching Claude models:', error.message);
     res.status(500).json({ 
@@ -309,7 +309,7 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
       const models = AVAILABLE_MODELS[provider] || [];
       return res.json({
         models,
-        count: models.length,
+        count: models?.length || 0,
         provider,
         source: 'cached',
         warning: `No API key configured for ${provider}, using cached models`
@@ -332,7 +332,7 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
           const models = AVAILABLE_MODELS['claude'] || [];
           return res.json({
             models,
-            count: models.length,
+            count: models?.length || 0,
             provider: 'claude',
             source: 'cached',
             warning: `API returned ${response.status}`
@@ -357,21 +357,21 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
           }
         }
 
-        if (models.length === 0) {
+        if (models?.length === 0) {
           console.warn('⚠️ No Claude models returned from API, using cached models');
           const cachedModels = AVAILABLE_MODELS['claude'] || [];
           return res.json({
             models: cachedModels,
-            count: cachedModels.length,
+            count: cachedModels?.length || 0,
             provider: 'claude',
             source: 'cached'
           });
         }
 
-        console.log(`✅ Found ${models.length} Claude models from API`);
+        console.log(`✅ Found ${models?.length || 0} Claude models from API`);
         return res.json({
           models,
-          count: models.length,
+          count: models?.length || 0,
           provider: 'claude',
           source: 'api'
         });
@@ -380,7 +380,7 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
         const models = AVAILABLE_MODELS['claude'] || [];
         return res.json({
           models,
-          count: models.length,
+          count: models?.length || 0,
           provider: 'claude',
           source: 'cached',
           error: apiError.message
@@ -406,21 +406,21 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
           }
         }
 
-        if (models.length === 0) {
+        if (models?.length === 0) {
           console.warn('⚠️ No OpenAI chat models found, using cached models');
           const cachedModels = AVAILABLE_MODELS['openai'] || [];
           return res.json({
             models: cachedModels,
-            count: cachedModels.length,
+            count: cachedModels?.length || 0,
             provider: 'openai',
             source: 'cached'
           });
         }
 
-        console.log(`✅ Found ${models.length} OpenAI models from API`);
+        console.log(`✅ Found ${models?.length || 0} OpenAI models from API`);
         return res.json({
           models,
-          count: models.length,
+          count: models?.length || 0,
           provider: 'openai',
           source: 'api'
         });
@@ -429,7 +429,7 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
         const models = AVAILABLE_MODELS['openai'] || [];
         return res.json({
           models,
-          count: models.length,
+          count: models?.length || 0,
           provider: 'openai',
           source: 'cached',
           error: apiError.message
@@ -440,7 +440,7 @@ router.get('/models-for-user/:provider', authenticateToken, async (req, res) => 
       const models = AVAILABLE_MODELS[provider] || [];
       return res.json({
         models,
-        count: models.length,
+        count: models?.length || 0,
         provider,
         source: 'cached'
       });
@@ -464,212 +464,214 @@ router.get('/config', authenticateToken, async (req, res) => {
       [userId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       // Return default config if not set
       return res.json({
-        analyzer_provider: 'claude',
-        analyzer_model: 'claude-3-5-haiku-20241022',
-        analyzer_api_key: null,
-        generator_provider: 'openai',
-        generator_model: 'gpt-4o-mini',
-        generator_api_key: null,
-        master_content: null,
-        master_resume_prompt: null,
-        master_cover_letter_prompt: null,
-        use_latex_template: true,
-        is_active: true,
+        analyzerProvider: 'claude',
+        analyzerModel: 'claude-3-5-haiku-20241022',
+        analyzerApiKey: null,
+        generatorProvider: 'openai',
+        generatorModel: 'gpt-4o-mini',
+        generatorApiKey: null,
+        masterContent: null,
+        masterResumePrompt: null,
+        masterCoverLetterPrompt: null,
+        masterResume: null,
+        masterCoverLetter: null,
+        useLatexTemplate: true,
+        isActive: true,
       });
     }
 
-    res.json(result.rows[0]);
+    const maskKey = (key) => {
+      if (!key) return null;
+      if (key?.length <= 8) return '****';
+      return key?.slice(0, 4) + '****' + key?.slice(-4);
+    };
+
+    const config = result.rows?.[0];
+    // Return with camelCase keys
+    res.json({
+      analyzerProvider: config.analyzer_provider,
+      analyzerModel: config.analyzer_model,
+      analyzerApiKey: config.analyzer_api_key, //maskKey(config.analyzer_api_key),
+      generatorProvider: config.generator_provider,
+      generatorModel: config.generator_model,
+      generatorApiKey: config.generator_api_key, //maskKey(config.generator_api_key),
+      masterContent: config.master_content,
+      masterResumePrompt: config.master_resume_prompt,
+      masterCoverLetterPrompt: config.master_cover_letter_prompt,
+      masterResume: config.master_resume,
+      masterCoverLetter: config.master_cover_letter,
+      useLatexTemplate: config.use_latex_template,
+      isActive: config.is_active,
+    });
   } catch (error) {
     console.error('Error fetching LLM config:', error);
     res.status(500).json({ error: 'Failed to fetch configuration' });
   }
 });
 
-// Save or update user's LLM configuration (POST for backward compatibility)
+// Save or update user's LLM configuration
 router.post('/config', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const {
-      analyzer_provider,
-      analyzer_model,
-      analyzer_api_key,
-      generator_provider,
-      generator_model,
-      generator_api_key,
-      master_content,
-      master_resume_prompt,
-      master_cover_letter_prompt,
-      use_latex_template,
-    } = req.body;
 
-    // Validate master_content length if provided (max ~50KB for 2-3 pages)
-    if (master_content && master_content.length > 50000) {
-      return res.status(400).json({ error: 'Master content exceeds maximum length (50KB)' });
+    // ❌ Reject snake_case input
+    const hasSnakeCase = Object.keys(req.body).some((key) =>
+      key.includes('_')
+    );
+
+    if (hasSnakeCase) {
+      return res.status(400).json({
+        error: 'Invalid request format. Use camelCase fields only.',
+      });
     }
 
-    // Check if config exists
+    // ✅ camelCase input
+    const {
+      analyzerProvider,
+      analyzerModel,
+      analyzerApiKey,
+      generatorProvider,
+      generatorModel,
+      generatorApiKey,
+      masterContent,
+      masterResumePrompt,
+      masterCoverLetterPrompt,
+      masterResume,
+      masterCoverLetter,
+      useLatexTemplate,
+    } = req.body;
+
+    // ✅ check existing config
     const existingConfig = await pool.query(
       'SELECT * FROM llm_configs WHERE user_id = $1',
       [userId]
     );
 
-    // If only master_content or master prompts are provided, do a partial update
-    const isPartialUpdate = !analyzer_provider && !analyzer_model && !analyzer_api_key && !generator_provider && !generator_model && !generator_api_key && (master_content || master_resume_prompt || master_cover_letter_prompt || use_latex_template !== undefined);
-
-    if (isPartialUpdate) {
-      // Partial update - only update master_content and/or master prompts
-      console.log(`📝 Partial update attempt for user ${userId}, existingConfig rows: ${existingConfig.rows.length}`);
-      
-      if (existingConfig.rows.length === 0) {
-        console.log(`❌ No config found for user ${userId}`);
-        return res.status(400).json({ error: 'No existing configuration found. Please configure LLM providers first.' });
-      }
-
-      const result = await pool.query(
-        `UPDATE llm_configs 
-         SET master_content = COALESCE($1, master_content),
-             master_resume_prompt = COALESCE($2, master_resume_prompt),
-             master_cover_letter_prompt = COALESCE($3, master_cover_letter_prompt),
-             use_latex_template = COALESCE($4, use_latex_template),
-             updated_at = CURRENT_TIMESTAMP 
-         WHERE user_id = $5 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active`,
-        [master_content || null, master_resume_prompt || null, master_cover_letter_prompt || null, use_latex_template !== undefined ? use_latex_template : null, userId]
-      );
-
-      if (result.rows.length === 0) {
-        console.log(`❌ Update failed for user ${userId}`);
-        return res.status(500).json({ error: 'Failed to update configuration' });
-      }
-
-      console.log(`✅ Configuration updated for user ${userId}`);
-      return res.json({
-        message: 'Configuration saved successfully',
-        config: result.rows[0],
-      });
-    }
-
-    // Full update - validate all required fields
-    if (
-      !analyzer_provider ||
-      !analyzer_model ||
-      !analyzer_api_key ||
-      !generator_provider ||
-      !generator_model ||
-      !generator_api_key
-    ) {
-      return res.status(400).json({ error: 'All analyzer and generator fields are required' });
-    }
-
-    // Validate providers are supported
-    const supportedProviders = ['claude', 'openai', 'gemini'];
-    if (!supportedProviders.includes(analyzer_provider)) {
-      return res.status(400).json({ error: 'Invalid analyzer provider' });
-    }
-
-    if (!supportedProviders.includes(generator_provider)) {
-      return res.status(400).json({ error: 'Invalid generator provider' });
-    }
-
-    // Validate model IDs are not empty (actual validation happens when API is called)
-    if (!analyzer_model || typeof analyzer_model !== 'string') {
-      return res.status(400).json({ error: 'Invalid analyzer model' });
-    }
-
-    if (!generator_model || typeof generator_model !== 'string') {
-      return res.status(400).json({ error: 'Invalid generator model' });
-    }
-
     let result;
-    if (existingConfig.rows.length > 0) {
-      // Update existing config - preserve master prompts if not provided
-      // Build dynamic update query based on what fields are provided
-      let updateQuery = `UPDATE llm_configs 
-         SET analyzer_provider = $1, analyzer_model = $2, analyzer_api_key = $3,
-             generator_provider = $4, generator_model = $5, generator_api_key = $6`;
-      
-      const updateFields = [
-        analyzer_provider,
-        analyzer_model,
-        analyzer_api_key,
-        generator_provider,
-        generator_model,
-        generator_api_key,
-      ];
-      
-      let paramIndex = 7;
-      
-      // Only update master_content if explicitly provided
-      if (master_content !== undefined) {
-        updateQuery += `, master_content = $${paramIndex}`;
-        updateFields.push(master_content);
-        paramIndex++;
-      }
-      
-      // Only update master_resume_prompt if explicitly provided
-      if (master_resume_prompt !== undefined) {
-        updateQuery += `, master_resume_prompt = $${paramIndex}`;
-        updateFields.push(master_resume_prompt);
-        paramIndex++;
-      }
-      
-      // Only update master_cover_letter_prompt if explicitly provided
-      if (master_cover_letter_prompt !== undefined) {
-        updateQuery += `, master_cover_letter_prompt = $${paramIndex}`;
-        updateFields.push(master_cover_letter_prompt);
-        paramIndex++;
-      }
-      
-      // Only update use_latex_template if explicitly provided
-      if (use_latex_template !== undefined) {
-        updateQuery += `, use_latex_template = $${paramIndex}`;
-        updateFields.push(use_latex_template);
-        paramIndex++;
-      }
-      
-      updateQuery += `, updated_at = CURRENT_TIMESTAMP 
-         WHERE user_id = $${paramIndex} 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active`;
-      
-      updateFields.push(userId);
 
-      result = await pool.query(updateQuery, updateFields);
-    } else {
-      // Create new config
+    // 🚀 UPSERT-like behavior (create or update)
+    if (existingConfig.rows?.length === 0) {
       result = await pool.query(
-        `INSERT INTO llm_configs 
-         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, use_latex_template, is_active`,
-        [
-          userId,
+        `INSERT INTO llm_configs (
+          user_id,
           analyzer_provider,
           analyzer_model,
           analyzer_api_key,
           generator_provider,
           generator_model,
           generator_api_key,
-          master_content || null,
-          master_resume_prompt || null,
-          master_cover_letter_prompt || null,
-          use_latex_template !== undefined ? use_latex_template : true,
+          master_content,
+          master_resume_prompt,
+          master_cover_letter_prompt,
+          master_resume,
+          master_cover_letter,
+          use_latex_template
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        RETURNING *`,
+        [
+          userId,
+          analyzerProvider ?? 'claude',
+          analyzerModel ?? 'claude-3-5-haiku-20241022',
+          analyzerApiKey ?? null,
+          generatorProvider ?? 'openai',
+          generatorModel ?? 'gpt-4o-mini',
+          generatorApiKey ?? null,
+          masterContent ?? null,
+          masterResumePrompt ?? null,
+          masterCoverLetterPrompt ?? null,
+          masterResume ?? null,
+          masterCoverLetter ?? null,
+          useLatexTemplate ?? true,
+        ]
+      );
+    } else {
+      result = await pool.query(
+        `UPDATE llm_configs 
+         SET analyzer_provider = COALESCE($1, analyzer_provider),
+             analyzer_model = COALESCE($2, analyzer_model),
+             analyzer_api_key = COALESCE($3, analyzer_api_key),
+
+             generator_provider = COALESCE($4, generator_provider),
+             generator_model = COALESCE($5, generator_model),
+             generator_api_key = COALESCE($6, generator_api_key),
+
+             master_content = COALESCE($7, master_content),
+             master_resume_prompt = COALESCE($8, master_resume_prompt),
+             master_cover_letter_prompt = COALESCE($9, master_cover_letter_prompt),
+             master_resume = COALESCE($10, master_resume),
+             master_cover_letter = COALESCE($11, master_cover_letter),
+
+             use_latex_template = COALESCE($12, use_latex_template),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $13
+         RETURNING *`,
+        [
+          analyzerProvider ?? null,
+          analyzerModel ?? null,
+          analyzerApiKey ?? null,
+
+          generatorProvider ?? null,
+          generatorModel ?? null,
+          generatorApiKey ?? null,
+
+          masterContent ?? null,
+          masterResumePrompt ?? null,
+          masterCoverLetterPrompt ?? null,
+          masterResume ?? null,
+          masterCoverLetter ?? null,
+
+          useLatexTemplate ?? null,
+          userId,
         ]
       );
     }
 
-    console.log(`✅ LLM config saved for user ${userId}:`);
-    console.log(`   Analyzer: ${analyzer_provider} - ${analyzer_model}`);
-    console.log(`   Generator: ${generator_provider} - ${generator_model}`);
-    res.json({
-      message: 'Configuration saved successfully',
-      config: result.rows[0],
+    const maskKey = (key) => {
+      if (!key) return null;
+      if (key?.length <= 8) return '****';
+      return key?.slice(0, 4) + '****' + key?.slice(-4);
+    };
+    
+    const mapConfig = (row) => ({
+      id: row.id,
+      userId: row.user_id,
+    
+      analyzerProvider: row.analyzer_provider,
+      analyzerModel: row.analyzer_model,
+      analyzerApiKey: row.analyzer_api_key, //maskKey(row.analyzer_api_key),
+    
+      generatorProvider: row.generator_provider,
+      generatorModel: row.generator_model,
+      generatorApiKey: row.generator_api_key, //maskKey(row.generator_api_key),
+    
+      masterContent: row.master_content,
+      masterResumePrompt: row.master_resume_prompt,
+      masterCoverLetterPrompt: row.master_cover_letter_prompt,
+      masterResume: row.master_resume,
+      masterCoverLetter: row.master_cover_letter,
+    
+      useLatexTemplate: row.use_latex_template,
+      isActive: row.is_active,
+    
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     });
+
+    return res.json({
+      message: 'Configuration saved successfully',
+      config: mapConfig(result.rows?.[0]),
+    });
+
   } catch (error) {
-    console.error('Error saving LLM config:', error);
-    res.status(500).json({ error: 'Failed to save configuration' });
+    console.error('Error saving config:', error);
+    return res.status(500).json({
+      error: 'Failed to save configuration',
+      details: error.message,
+    });
   }
 });
 
@@ -677,71 +679,84 @@ router.post('/config', authenticateToken, async (req, res) => {
 router.put('/config', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
+
+    // ❌ Reject snake_case
+    const hasSnakeCase = Object.keys(req.body).some((key) =>
+      key.includes('_')
+    );
+
+    if (hasSnakeCase) {
+      return res.status(400).json({
+        error: 'Invalid request format. Use camelCase fields only.',
+      });
+    }
+
+    // ✅ camelCase input
     const {
-      master_resume_prompt,
-      master_cover_letter_prompt,
-      master_content,
+      masterResumePrompt,
+      masterCoverLetterPrompt,
+      masterContent,
     } = req.body;
 
-    // Check if config exists
     const existingConfig = await pool.query(
       'SELECT * FROM llm_configs WHERE user_id = $1',
       [userId]
     );
 
-    if (existingConfig.rows.length === 0) {
-      // Create a default config with the provided prompts
-      console.log(`📝 Creating default config for user ${userId}`);
+    // 🚀 If not exists → create default config
+    if (existingConfig.rows?.length === 0) {
       const result = await pool.query(
         `INSERT INTO llm_configs 
-         (user_id, analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
-         RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
+         (user_id, analyzer_provider, analyzer_model, generator_provider, generator_model,
+          master_content, master_resume_prompt, master_cover_letter_prompt)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         RETURNING *`,
         [
           userId,
           'claude',
           'claude-3-5-haiku-20241022',
-          null,
           'openai',
           'gpt-4o-mini',
-          null,
-          master_content || null,
-          master_resume_prompt || null,
-          master_cover_letter_prompt || null,
+          masterContent ?? null,
+          masterResumePrompt ?? null,
+          masterCoverLetterPrompt ?? null,
         ]
       );
 
-      console.log(`✅ Default config created for user ${userId}`);
       return res.json({
         message: 'Configuration created successfully',
-        config: result.rows[0],
+        config: result.rows?.[0],
       });
     }
 
-    // Update only the provided fields
+    // 🚀 Partial update
     const result = await pool.query(
       `UPDATE llm_configs 
-       SET master_resume_prompt = COALESCE($1, master_resume_prompt),
-           master_cover_letter_prompt = COALESCE($2, master_cover_letter_prompt),
-           master_content = COALESCE($3, master_content),
-           updated_at = CURRENT_TIMESTAMP 
-       WHERE user_id = $4 
-       RETURNING analyzer_provider, analyzer_model, analyzer_api_key, generator_provider, generator_model, generator_api_key, master_content, master_resume_prompt, master_cover_letter_prompt, is_active`,
-      [master_resume_prompt || null, master_cover_letter_prompt || null, master_content || null, userId]
+       SET master_content = COALESCE($1, master_content),
+           master_resume_prompt = COALESCE($2, master_resume_prompt),
+           master_cover_letter_prompt = COALESCE($3, master_cover_letter_prompt),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = $4
+       RETURNING *`,
+      [
+        masterContent ?? null,
+        masterResumePrompt ?? null,
+        masterCoverLetterPrompt ?? null,
+        userId,
+      ]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(500).json({ error: 'Failed to update configuration' });
-    }
-
-    console.log(`✅ Master prompts updated for user ${userId}`);
-    res.json({
-      message: 'Master prompts updated successfully',
-      config: result.rows[0],
+    return res.json({
+      message: 'Configuration updated successfully',
+      config: result.rows?.[0],
     });
+
   } catch (error) {
-    console.error('Error updating LLM config:', error);
-    res.status(500).json({ error: 'Failed to update configuration' });
+    console.error('Error updating config:', error);
+    return res.status(500).json({
+      error: 'Failed to update configuration',
+      details: error.message,
+    });
   }
 });
 
@@ -753,11 +768,11 @@ export const getUserLLMConfig = async (userId, type = 'both') => {
       [userId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows?.length === 0) {
       return null;
     }
 
-    const config = result.rows[0];
+    const config = result.rows?.[0];
 
     // Helper function to get API key with fallback to environment variables
     const getApiKey = (provider, configApiKey) => {

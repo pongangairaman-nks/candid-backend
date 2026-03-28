@@ -27,14 +27,14 @@ router.post('/generate-pdf', async (req, res) => {
             [resumeId]
         );
 
-        if (resumeResult.rows.length === 0) {
+        if (resumeResult.rows?.length === 0) {
             return res.status(404).json({
                 status: 'error',
                 message: `Resume with ID ${resumeId} not found`
             });
         }
 
-        const tailoredLatex = resumeResult.rows[0].tailored_latex;
+        const tailoredLatex = resumeResult.rows?.[0]?.tailored_latex;
 
         if (!tailoredLatex) {
             return res.status(400).json({
@@ -155,14 +155,14 @@ router.get('/resume/:id', async (req, res) => {
             [id]
         );
 
-        if (result.rows.length === 0) {
+        if (result.rows?.length === 0) {
             return res.status(404).json({
                 status: 'error',
                 message: 'Resume not found'
             });
         }
 
-        const resume = result.rows[0];
+        const resume = result.rows?.[0];
 
         res.status(200).json({
             status: 'success',

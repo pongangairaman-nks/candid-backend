@@ -310,10 +310,10 @@ Return ONLY valid JSON.`;
         };
 
         console.log('✅ Claude analysis complete');
-        console.log(`  Primary keywords: ${sanitizedAnalysis.primary_keywords.length}`);
-        console.log(`  Secondary keywords: ${sanitizedAnalysis.secondary_keywords.length}`);
-        console.log(`  Missing skills: ${sanitizedAnalysis.missing_skills.length}`);
-        console.log(`  Role focus: ${sanitizedAnalysis.role_focus.substring(0, 50)}...`);
+        console.log(`  Primary keywords: ${sanitizedAnalysis.primary_keywords?.length || 0}`);
+        console.log(`  Secondary keywords: ${sanitizedAnalysis.secondary_keywords?.length || 0}`);
+        console.log(`  Missing skills: ${sanitizedAnalysis.missing_skills?.length || 0}`);
+        console.log(`  Role focus: ${sanitizedAnalysis.role_focus?.substring(0, 50) || ''}...`);
 
         return sanitizedAnalysis;
 
