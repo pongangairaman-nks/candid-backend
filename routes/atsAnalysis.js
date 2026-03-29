@@ -135,10 +135,37 @@ router.post('/analysis', authenticateToken, async (req, res) => {
       } catch (analysisError) {
         console.error(`❌ Analysis failed: ${analysisError.message}`);
         console.error('🔍 [DEBUG] Full error:', analysisError);
+        
+        // Parse error message for better user feedback
+        const errorMsg = analysisError.message || '';
+        let userFriendlyMessage = 'Failed to analyze job description';
+        let errorDetails = '';
+        
+        if (errorMsg.includes('not_found_error') || errorMsg.includes('404')) {
+          const modelMatch = errorMsg.match(/model:\s*([^\s,}]+)/);
+          const model = modelMatch ? modelMatch[1] : 'unknown model';
+          userFriendlyMessage = `Model not found: ${model}`;
+          errorDetails = `The configured analyzer model "${model}" is not available in your ${provider} account. Please update your LLM configuration with a valid model name.`;
+        } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized') || errorMsg.includes('invalid_api_key')) {
+          userFriendlyMessage = 'Authentication failed';
+          errorDetails = `Your ${provider} API key is invalid or expired. Please update your LLM configuration with a valid API key.`;
+        } else if (errorMsg.includes('429') || errorMsg.includes('rate_limit')) {
+          userFriendlyMessage = 'Rate limit exceeded';
+          errorDetails = `You've exceeded the API rate limit. Please try again in a few moments.`;
+        } else if (errorMsg.includes('timeout')) {
+          userFriendlyMessage = 'Request timeout';
+          errorDetails = `The analysis took too long. Please try again.`;
+        } else if (errorMsg.includes('network') || errorMsg.includes('ECONNREFUSED')) {
+          userFriendlyMessage = 'Network error';
+          errorDetails = `Unable to connect to ${provider}. Please check your internet connection and try again.`;
+        }
+        
         return res.status(500).json({
           status: 'error',
-          message: `Failed to analyze job description: ${analysisError.message}`,
-          error: analysisError.message,
+          message: userFriendlyMessage,
+          details: errorDetails,
+          provider: provider,
+          error: process.env.NODE_ENV === 'development' ? analysisError.message : undefined,
         });
       }
     }

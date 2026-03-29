@@ -365,6 +365,26 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
 
     logger.info(`🔧 Using generator: ${userConfig.provider} - ${userConfig.model} (${quality} mode, tier: ${userConfig.tier})`);
 
+    // Convert masterProfile to string if it's an array (filter out empty sections)
+    let masterProfileLatex = '';
+    if (masterProfile) {
+      if (Array.isArray(masterProfile)) {
+        // Filter sections with content and convert to readable format for LLM context
+        const nonEmptySections = masterProfile.filter((section) => section.content && section.content.trim());
+        
+        if (nonEmptySections.length > 0) {
+          masterProfileLatex = nonEmptySections
+            .map((section) => `${section.title}:\n${section.content}`)
+            .join('\n\n---\n\n');
+          console.log(`📋 Filtered ${nonEmptySections.length} non-empty sections from masterProfile`);
+        } else {
+          console.log(`📋 No non-empty sections in masterProfile, will use resume only`);
+        }
+      } else if (typeof masterProfile === 'string') {
+        masterProfileLatex = masterProfile;
+      }
+    }
+
     let fullLatex = resume;
     let contextSize = resume?.length || 0;
     let optimizationContext = '';
@@ -375,12 +395,12 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
       
       // For focused mode, include section-specific context
       if (quality === 'high') {
-        fullLatex = masterProfile || resume;
+        fullLatex = masterProfileLatex || resume;
         logger.info('📊 Using full resume context for section optimization (high quality)...');
       } else {
         // For fast mode, include only the selected content + section outline
-        if (masterProfile) {
-          const sections = masterProfile.match(/\\section\*?{[^}]+}/g) || [];
+        if (masterProfileLatex) {
+          const sections = masterProfileLatex.match(/\\section\*?{[^}]+}/g) || [];
           const outline = sections?.join('\n') || '';
           fullLatex = `${selectedContent}\n\n% FULL RESUME OUTLINE:\n${outline}`;
         } else {
@@ -405,12 +425,12 @@ CONTEXT: Full resume structure and job description provided below.`;
       logger.info('🌍 GLOBAL MODE: Optimizing entire resume');
       
       if (quality === 'high') {
-        fullLatex = masterProfile || resume;
+        fullLatex = masterProfileLatex || resume;
         logger.info('📊 Optimizing with full resume context (high quality)...');
       } else {
         logger.info('📊 Optimizing with reduced context (fast mode)...');
-        if (masterProfile) {
-          const sections = masterProfile.match(/\\section\*?{[^}]+}/g) || [];
+        if (masterProfileLatex) {
+          const sections = masterProfileLatex.match(/\\section\*?{[^}]+}/g) || [];
           const outline = sections?.join('\n') || '';
           fullLatex = `${resume}\n\n% SECTION OUTLINE:\n${outline}`;
         }
@@ -485,15 +505,25 @@ CONTEXT: Full resume structure and job description provided below.`;
     
     // Extract meaningful error message from different error types
     let errorMessage = 'Failed to optimize resume';
+    let errorDetails = '';
     
     if (error.message && error.message.includes('credit balance')) {
-      errorMessage = 'API credit balance is too low. Please upgrade your API plan.';
+      errorMessage = 'API credit balance is too low';
+      errorDetails = 'Please upgrade your API plan to continue using optimization features.';
     } else if (error.message && error.message.includes('401')) {
-      errorMessage = 'API authentication failed. Please check your API key configuration.';
+      errorMessage = 'API authentication failed';
+      errorDetails = 'Please check your API key configuration in the Configuration page.';
     } else if (error.message && error.message.includes('429')) {
-      errorMessage = 'API rate limit exceeded. Please try again in a few moments.';
+      errorMessage = 'API rate limit exceeded';
+      errorDetails = 'Please try again in a few moments.';
     } else if (error.message && error.message.includes('timeout')) {
-      errorMessage = 'Request timed out. Please try again.';
+      errorMessage = 'Request timed out';
+      errorDetails = 'The optimization took too long. Please try again.';
+    } else if (error.message && error.message.includes('not_found_error') || error.message.includes('404')) {
+      const modelMatch = error.message.match(/model:\s*([^\s,}]+)/);
+      const model = modelMatch ? modelMatch[1] : 'unknown model';
+      errorMessage = `Model not found: ${model}`;
+      errorDetails = `The configured generator model "${model}" is not available. Please update your LLM configuration with a valid model name.`;
     } else if (error.message) {
       errorMessage = error.message;
     }
@@ -501,7 +531,7 @@ CONTEXT: Full resume structure and job description provided below.`;
     res.status(500).json({
       status: 'error',
       message: errorMessage,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      error: errorDetails || (process.env.NODE_ENV === 'development' ? error.message : undefined),
     });
   }
 });
