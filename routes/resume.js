@@ -9,6 +9,7 @@ import { getTieredLLMConfig } from '../services/llmTierService.js';
 import { getUserFeatureFlags } from '../services/featureFlags.js';
 import { logLLMOperation, logger } from '../services/logger.js';
 import { optimizeLimiter } from '../middleware/rateLimiter.js';
+import { extractSectionsFromLatex, formatSectionsForResponse } from '../utils/sectionParser.js';
 
 const router = express.Router();
 
@@ -102,19 +103,22 @@ router.get('/master-template', authenticateToken, async (req, res) => {
         data: {
           templateId: null,
           latexCode: '',
+          sections: [],
         },
       });
     }
 
     const template = result.rows[0];
+    const sections = extractSectionsFromLatex(template.original_latex);
 
-    console.log(`✅ Master template found for user ${userId}`);
+    console.log(`✅ Master template found for user ${userId} with ${sections.length} sections`);
 
     res.status(200).json({
       status: 'success',
       data: {
         templateId: template.id,
         latexCode: template.original_latex,
+        sections: formatSectionsForResponse(sections),
         createdAt: template.created_at,
         updatedAt: template.updated_at,
       },
@@ -124,6 +128,53 @@ router.get('/master-template', authenticateToken, async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch master template',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+// GET /api/resume/sections - Get sections from user's master resume
+router.get('/sections', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log(`📋 Fetching sections for user ${userId}`);
+
+    const result = await pool.query(
+      `SELECT original_latex 
+       FROM resumes 
+       WHERE user_id = $1 
+       ORDER BY id ASC 
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (result.rows?.length === 0) {
+      console.log(`⚠️ No resume found for user ${userId}`);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          sections: [],
+        },
+      });
+    }
+
+    const latexCode = result.rows[0].original_latex;
+    const sections = extractSectionsFromLatex(latexCode);
+
+    console.log(`✅ Found ${sections.length} sections for user ${userId}`);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        sections: formatSectionsForResponse(sections),
+      },
+    });
+  } catch (error) {
+    console.error('❌ Get sections error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch sections',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
@@ -251,7 +302,19 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
   try {
     const userId = req.user.id;
     const startTime = Date.now();
-    const { jobDescription, prompt, masterProfile, resume, quality = 'fast' } = req.body;
+    const { 
+      jobDescription, 
+      prompt, 
+      masterProfile, 
+      resume, 
+      quality = 'fast',
+      mode = 'global',
+      section,
+      selectedContent,
+      primarySection,
+      allSections,
+      confidence
+    } = req.body;
 
     // Validate input
     if (!resume || !resume.trim()) {
@@ -276,6 +339,14 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
       });
     }
 
+    // Validate mode
+    if (!['global', 'focused'].includes(mode)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Mode must be either "global" or "focused"',
+      });
+    }
+
     // Use default prompt if not provided
     const optimizationPrompt = prompt && prompt.trim() 
       ? prompt 
@@ -294,24 +365,59 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
 
     logger.info(`🔧 Using generator: ${userConfig.provider} - ${userConfig.model} (${quality} mode, tier: ${userConfig.tier})`);
 
-    // Prepare context based on quality
     let fullLatex = resume;
     let contextSize = resume?.length || 0;
+    let optimizationContext = '';
 
-    if (quality === 'high') {
-      // Full context for high quality
-      fullLatex = masterProfile || resume;
-      logger.info('📊 Optimizing with full resume context (high quality)...');
-    } else {
-      // Reduced context for fast mode
-      logger.info('📊 Optimizing with reduced context (fast mode)...');
-      // Add section outline only
-      if (masterProfile) {
-        const sections = masterProfile.match(/\\section\*?{[^}]+}/g) || [];
-        const outline = sections?.join('\n') || '';
-        fullLatex = `${resume}\n\n% SECTION OUTLINE:\n${outline}`;
+    // Handle focused mode (section selection)
+    if (mode === 'focused' && selectedContent && primarySection) {
+      logger.info(`📍 FOCUSED MODE: Optimizing section "${primarySection}" (confidence: ${confidence}%)`);
+      
+      // For focused mode, include section-specific context
+      if (quality === 'high') {
+        fullLatex = masterProfile || resume;
+        logger.info('📊 Using full resume context for section optimization (high quality)...');
+      } else {
+        // For fast mode, include only the selected content + section outline
+        if (masterProfile) {
+          const sections = masterProfile.match(/\\section\*?{[^}]+}/g) || [];
+          const outline = sections?.join('\n') || '';
+          fullLatex = `${selectedContent}\n\n% FULL RESUME OUTLINE:\n${outline}`;
+        } else {
+          fullLatex = selectedContent;
+        }
+        logger.info('📊 Using focused context for section optimization (fast mode)...');
       }
+
+      // Build context string for LLM
+      optimizationContext = `You are optimizing the "${primarySection}" section of a resume.
+
+SELECTED CONTENT TO OPTIMIZE:
+${selectedContent}
+
+${allSections && allSections.length > 1 ? `NOTE: Selection spans multiple sections: ${allSections.join(', ')}` : ''}
+
+CONTEXT: Full resume structure and job description provided below.`;
+
       contextSize = fullLatex?.length || 0;
+    } else {
+      // Global mode (full resume optimization)
+      logger.info('🌍 GLOBAL MODE: Optimizing entire resume');
+      
+      if (quality === 'high') {
+        fullLatex = masterProfile || resume;
+        logger.info('📊 Optimizing with full resume context (high quality)...');
+      } else {
+        logger.info('📊 Optimizing with reduced context (fast mode)...');
+        if (masterProfile) {
+          const sections = masterProfile.match(/\\section\*?{[^}]+}/g) || [];
+          const outline = sections?.join('\n') || '';
+          fullLatex = `${resume}\n\n% SECTION OUTLINE:\n${outline}`;
+        }
+        contextSize = fullLatex?.length || 0;
+      }
+
+      optimizationContext = 'Optimize the entire resume to better match the job description.';
     }
 
     let optimizedText;
@@ -319,26 +425,26 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
     // Call appropriate LLM service based on provider
     if (userConfig.provider === 'claude') {
       optimizedText = await optimizeSectionWithClaude(
-        resume,
+        mode === 'focused' ? selectedContent : resume,
         fullLatex,
         jobDescription,
-        optimizationPrompt,
+        optimizationContext || optimizationPrompt,
         userConfig
       );
     } else if (userConfig.provider === 'openai') {
       optimizedText = await optimizeSectionWithOpenAI(
-        resume,
+        mode === 'focused' ? selectedContent : resume,
         fullLatex,
         jobDescription,
-        optimizationPrompt,
+        optimizationContext || optimizationPrompt,
         userConfig
       );
     } else if (userConfig.provider === 'gemini') {
       optimizedText = await optimizeSectionWithGemini(
-        resume,
+        mode === 'focused' ? selectedContent : resume,
         fullLatex,
         jobDescription,
-        optimizationPrompt,
+        optimizationContext || optimizationPrompt,
         userConfig
       );
     } else {
@@ -352,7 +458,7 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
     const latency = Date.now() - startTime;
     logLLMOperation({
       userId,
-      phase: `section_optimize_${quality}`,
+      phase: `${mode}_optimize_${quality}`,
       provider: userConfig.provider,
       model: userConfig.model,
       latencyMs: latency,
@@ -360,13 +466,15 @@ router.post('/optimize', authenticateToken, optimizeLimiter, async (req, res) =>
       status: 'success',
     });
 
-    logger.info('✅ Resume section optimized successfully');
+    logger.info(`✅ Resume ${mode} optimization completed`);
 
     res.status(200).json({
       status: 'success',
-      message: 'Resume optimized successfully',
+      message: `Resume ${mode} optimization successful`,
       data: {
         optimizedLatex: optimizedText,
+        mode,
+        section: primarySection,
         quality,
         contextSize,
         latencyMs: latency,
