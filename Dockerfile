@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Copy dependencies first (better caching)
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
 
 # Copy remaining files
 COPY . .

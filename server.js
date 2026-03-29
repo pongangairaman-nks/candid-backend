@@ -95,27 +95,36 @@ const startServer = async () => {
     try {
         logger.info('🚀 Starting AI Resume Tailoring Platform...\n');
 
-        // Test database connection
-        logger.info('📊 Testing database connection...');
-        await testConnection();
-
-        // Initialize database tables
-        logger.info('📊 Initializing database tables...');
-        await initDatabase();
-
-        // Initialize feature flags
-        logger.info('🚩 Initializing feature flags...');
-        await initializeFeatureFlagsTable();
-
-        // Initialize Firebase
-        logger.info('🔥 Initializing Firebase...');
-        initFirebase();
-
-        // Start Express server
+        // Start Express server immediately
         app.listen(PORT, () => {
             logger.info(`✅ Server running on http://localhost:${PORT}`);
             logger.info(`✅ Health check: http://localhost:${PORT}/api/ping\n`);
         });
+
+        // Initialize database and other services in the background
+        (async () => {
+            try {
+                // Test database connection
+                logger.info('📊 Testing database connection...');
+                await testConnection();
+
+                // Initialize database tables
+                logger.info('📊 Initializing database tables...');
+                await initDatabase();
+
+                // Initialize feature flags
+                logger.info('🚩 Initializing feature flags...');
+                await initializeFeatureFlagsTable();
+
+                // Initialize Firebase
+                logger.info('🔥 Initializing Firebase...');
+                initFirebase();
+
+                logger.info('✅ All services initialized successfully');
+            } catch (error) {
+                logger.error('❌ Background initialization error:', { error: error.message });
+            }
+        })();
     } catch (error) {
         logger.error('❌ Failed to start server:', { error: error.message });
         process.exit(1);
