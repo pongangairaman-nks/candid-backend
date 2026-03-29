@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { getATSAnalysisPrompt } from '../prompts/atsAnalysisPrompt.js';
 
 dotenv.config();
 
@@ -219,88 +220,11 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         
         console.log('🔍 [DEBUG] Using Claude model:', model);
 
-        const systemPrompt = `You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist.
-
-            Analyze the given job description and resume deeply.
-
-            Return STRICTLY valid JSON with the following structure:
-
-            {
-            "overview": "2-3 line realistic summary of how well the resume matches the job. Mention strengths and key gaps.",
-
-            "score_breakdown": {
-                "keyword_match": number (0-100),
-                "experience_match": number (0-100),
-                "formatting": number (0-100),
-                "impact": number (0-100),
-                "overall": number (0-100)
-            },
-
-            "primary_keywords": ["must-have skills"],
-            "secondary_keywords": ["nice-to-have skills"],
-
-            "missing_skills": ["skills missing from resume"],
-            "matching_skills": ["skills present in both JD and resume"],
-
-            "role_focus": "1-2 line description of what the role is mainly about",
-            "seniority_level": "entry | mid | senior | lead | manager | director",
-
-            "experience_gaps": ["missing experience areas"],
-
-            "section_analysis": [
-                {
-                "section": "Summary | Skills | Experience | Projects | Education",
-                "feedback": "Specific issue in that section"
-                }
-            ],
-
-            "improvement_suggestions": [
-                {
-                "section": "Experience | Skills | Summary",
-                "original": "Actual line or content from resume",
-                "improved": "Rewritten better version with impact",
-                "reason": "Why this improves ATS or recruiter readability"
-                }
-            ],
-
-            "ats_optimization_tips": [
-                "specific actionable tips"
-            ]
-            }
-
-            IMPORTANT RULES:
-            - Return ONLY JSON
-            - NO markdown
-            - NO backticks
-            - NO explanations
-            - Suggestions MUST be specific, not generic
-            - Use actual resume content where possible
-            - Keep output concise but meaningful
-            `;
-
-        const userPrompt = `Analyze this job description and resume to extract ATS-critical information.
-
-            JOB DESCRIPTION:
-            ${jobDescription}
-
-            RESUME:
-            ${resumeText}
-
-            Extract:
-            1. Primary keywords (must-have skills/requirements) - 5-10 items
-            2. Secondary keywords (nice-to-have skills) - 5-10 items
-            3. Missing skills (in JD but not in resume) - 5-10 items
-            4. Matching skills (in both JD and resume) - 5-10 items
-            5. Role focus (main purpose of the role in 1-2 sentences)
-            6. Seniority level (entry, mid, senior, lead, manager, or director)
-            7. Experience gaps (missing experience areas)
-            8. ATS optimization tips (how to improve resume for this JD)
-
-            Return ONLY valid JSON.`;
+        const { systemPrompt, userPrompt } = getATSAnalysisPrompt(jobDescription, resumeText);
 
         const message = await client.messages.create({
             model: model,
-            max_tokens: 2000,
+            max_tokens: 4000,
             temperature: 0.3,
             system: systemPrompt,
             messages: [
@@ -312,32 +236,72 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         });
 
         const responseText = message.content[0].text;
+        console.log('📝 [DEBUG] Claude raw response length:', responseText.length);
+        console.log('📝 [DEBUG] Claude response (first 300 chars):', responseText.substring(0, 300));
 
         // Parse JSON response
         let analysis;
         try {
+            console.log('🔍 [DEBUG] Starting JSON parsing...');
+            
             // Remove markdown code blocks if present
             let cleanedText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            console.log('🔍 [DEBUG] After removing markdown (first 200 chars):', cleanedText.substring(0, 200));
             
             // Extract JSON if wrapped in other content
             if (!cleanedText.startsWith('{')) {
+                console.log('⚠️ [DEBUG] Text does not start with {, attempting to extract JSON...');
                 const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
+                    console.log('✅ [DEBUG] Found JSON match');
                     cleanedText = jsonMatch[0];
                 }
             }
             
+            console.log('🔍 [DEBUG] Final cleaned text length:', cleanedText.length);
+            console.log('🔍 [DEBUG] Final cleaned text (first 200 chars):', cleanedText.substring(0, 200));
+            console.log('🔍 [DEBUG] Attempting JSON.parse...');
+            
+            // Try to fix common JSON issues
+            // Fix unescaped newlines in strings
+            cleanedText = cleanedText.replace(/\n(?=(?:[^"]*"[^"]*")*[^"]*$)/g, ' ');
+            
             analysis = JSON.parse(cleanedText);
+            console.log('✅ [DEBUG] JSON parsed successfully');
         } catch (parseError) {
-            console.error('JSON parse error:', parseError.message);
-            console.error('Raw response:', responseText.substring(0, 500));
-            throw new Error('Failed to parse Claude response as JSON');
+            console.error('❌ JSON parse error:', parseError.message);
+            console.error('❌ Error position:', parseError.message.match(/position (\d+)/)?.[1]);
+            console.error('❌ Raw response length:', responseText.length);
+            console.error('❌ Raw response (first 800 chars):', responseText.substring(0, 800));
+            console.error('❌ Raw response (last 200 chars):', responseText.substring(responseText.length - 200));
+            
+            // Try alternative: extract just the valid JSON part
+            console.log('🔄 [DEBUG] Attempting to extract valid JSON portion...');
+            try {
+                const jsonStart = responseText.indexOf('{');
+                const jsonEnd = responseText.lastIndexOf('}');
+                if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+                    const jsonPortion = responseText.substring(jsonStart, jsonEnd + 1);
+                    analysis = JSON.parse(jsonPortion);
+                    console.log('✅ [DEBUG] Successfully parsed JSON portion');
+                } else {
+                    throw new Error('Could not find valid JSON boundaries');
+                }
+            } catch (fallbackError) {
+                console.error('❌ Fallback JSON extraction failed:', fallbackError.message);
+                throw new Error('Failed to parse Claude response as JSON');
+            }
         }
 
-        // Validate response structure
-        if (!analysis.primary_keywords || !analysis.overview) {
-            console.error('Invalid structure. Received keys:', Object.keys(analysis));
-            throw new Error('Invalid analysis structure from Gemini');
+        // Validate response structure - check for expected consolidated format
+        console.log('🔍 [DEBUG] Parsed analysis object keys:', Object.keys(analysis));
+        
+        const hasExpectedFormat = analysis.primary_keywords && analysis.overview && analysis.score_breakdown;
+        
+        if (!hasExpectedFormat) {
+            console.warn('⚠️ Claude did not return expected consolidated format. Received keys:', Object.keys(analysis));
+            console.error('Invalid structure. Expected: primary_keywords, overview, score_breakdown, etc.');
+            throw new Error('Invalid analysis structure from Claude - missing required fields');
           }
 
         // Ensure all required arrays exist and are arrays
@@ -456,7 +420,7 @@ Please optimize this section to better match the job description while preservin
     try {
         const response = await client.messages.create({
             model: userConfig.model || 'claude-opus-4-1-20250805',
-            max_tokens: 2000,
+            max_tokens: 4000,
             system: systemPrompt,
             messages: [
                 {

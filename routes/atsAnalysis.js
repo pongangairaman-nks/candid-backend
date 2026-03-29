@@ -184,7 +184,7 @@ router.post('/analysis', authenticateToken, async (req, res) => {
       );
       console.log(`✅ ATS score saved: ${atsAnalysis.ats_score}%`);
     }
-
+    
     // Format and return response
     const response = formatATSResponse(atsAnalysis, jobAnalysis);
     res.status(200).json({

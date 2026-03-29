@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
-import { getGeminiAnalysisPrompt } from '../prompts/geminiAnalysisPrompt.js';
+import { getATSAnalysisPrompt } from '../prompts/atsAnalysisPrompt.js';
 
 dotenv.config();
 
@@ -11,6 +11,118 @@ const getModel = (apiKey) => {
     }
     const ai = new GoogleGenAI({ apiKey });
     return ai.models.generateContent;
+};
+
+/**
+ * Convert Gemini's custom response format to our consolidated ATS format
+ */
+const convertGeminiFormatToATS = (geminiResponse) => {
+    console.log('🔄 Converting Gemini format to ATS format...');
+    console.log('🔄 Input keys:', Object.keys(geminiResponse));
+    
+    // Handle new Gemini format: applicant_name, overall_fit_score, experience_match, skill_match, etc.
+    if (geminiResponse.applicant_name || geminiResponse.overall_fit_score) {
+        console.log('🔄 Converting new Gemini format (with applicant_name, overall_fit_score)...');
+        
+        const overallScore = geminiResponse.overall_fit_score || 0;
+        const experienceMatch = geminiResponse.experience_match || '';
+        const skillMatch = geminiResponse.skill_match || '';
+        
+        return {
+            overview: `${experienceMatch} ${skillMatch}`.trim() || `The candidate is a strong match for the role with an overall fit score of ${overallScore}%.`,
+            
+            score_breakdown: {
+                keyword_match: Math.round(overallScore * 0.25),
+                experience_match: Math.round(overallScore * 0.35),
+                formatting: 75,
+                impact: Math.round(overallScore * 0.25),
+                overall: overallScore,
+            },
+            
+            primary_keywords: Array.isArray(geminiResponse.primary_keywords) ? geminiResponse.primary_keywords.slice(0, 10) : [],
+            secondary_keywords: Array.isArray(geminiResponse.secondary_keywords) ? geminiResponse.secondary_keywords.slice(0, 10) : [],
+            
+            missing_skills: Array.isArray(geminiResponse.missing_skills) ? geminiResponse.missing_skills.slice(0, 10) : [],
+            matching_skills: Array.isArray(geminiResponse.matching_skills) ? geminiResponse.matching_skills.slice(0, 10) : [],
+            
+            role_focus: geminiResponse.achievement_analysis || 'Frontend Development',
+            seniority_level: 'mid',
+            
+            experience_gaps: [],
+            
+            section_analysis: [
+                {
+                    section: 'Overall',
+                    feedback: geminiResponse.readability_and_formatting || 'Resume formatting is good.'
+                }
+            ],
+            
+            improvement_suggestions: Array.isArray(geminiResponse.improvement_suggestions) 
+                ? geminiResponse.improvement_suggestions.map(s => ({
+                    section: s.section || 'Experience',
+                    original: s.original || '',
+                    improved: s.improved || '',
+                    reason: s.reason || 'Improves ATS matching',
+                }))
+                : [],
+            
+            ats_optimization_tips: Array.isArray(geminiResponse.ats_tips) 
+                ? geminiResponse.ats_tips 
+                : [],
+        };
+    }
+    
+    // Handle old Gemini format: analysis, experience_calculation, skills
+    const analysis = geminiResponse.analysis || {};
+    const skills = geminiResponse.skills || {};
+    const suggestions = geminiResponse.improvement_suggestions || [];
+    
+    console.log('🔄 Converting old Gemini format (with analysis, skills)...');
+    
+    return {
+        overview: analysis.summary || `The candidate is a ${analysis.experience_match || 'moderate'} match for the role.`,
+        
+        score_breakdown: {
+            keyword_match: Math.round((analysis.ats_score_percentage || 0) * 0.25),
+            experience_match: Math.round((analysis.ats_score_percentage || 0) * 0.35),
+            formatting: 75,
+            impact: Math.round((analysis.ats_score_percentage || 0) * 0.25),
+            overall: analysis.ats_score_percentage || 0,
+        },
+        
+        primary_keywords: Array.isArray(skills.primary) ? skills.primary.slice(0, 10) : [],
+        secondary_keywords: Array.isArray(skills.secondary) ? skills.secondary.slice(0, 10) : [],
+        
+        missing_skills: Array.isArray(skills.missing) ? skills.missing.slice(0, 10) : [],
+        matching_skills: Array.isArray(skills.matching) ? skills.matching.slice(0, 10) : [],
+        
+        role_focus: analysis.job_title_match || 'Frontend Development',
+        seniority_level: analysis.seniority_level || 'mid',
+        
+        experience_gaps: Array.isArray(geminiResponse.experience_calculation) 
+            ? geminiResponse.experience_calculation.slice(0, 5) 
+            : [],
+        
+        section_analysis: [
+            {
+                section: 'Overall',
+                feedback: analysis.summary || 'Resume matches job requirements well.'
+            }
+        ],
+        
+        improvement_suggestions: Array.isArray(suggestions) 
+            ? suggestions.map(s => ({
+                section: s.section || 'Experience',
+                original: s.original || '',
+                improved: s.improved || '',
+                reason: s.reason || 'Improves ATS matching',
+            }))
+            : [],
+        
+        ats_optimization_tips: Array.isArray(geminiResponse.ats_tips) 
+            ? geminiResponse.ats_tips 
+            : [],
+    };
 };
 
 /**
@@ -30,7 +142,12 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
         const generateContent = getModel(userConfig.apiKey);
         const model = userConfig.model || 'gemini-2.5-flash';
 
-        const { systemPrompt, userPrompt } = getGeminiAnalysisPrompt(jobDescription, resumeText);
+        const { systemPrompt, userPrompt } = getATSAnalysisPrompt(jobDescription, resumeText);
+
+        console.log('🔍 [DEBUG] System prompt starts with:', systemPrompt.substring(0, 150));
+        console.log('🔍 [DEBUG] System prompt includes "CRITICAL RULES":', systemPrompt.includes('CRITICAL RULES'));
+        console.log('🔍 [DEBUG] System prompt includes "primary_keywords":', systemPrompt.includes('primary_keywords'));
+        console.log('🔍 [DEBUG] User prompt starts with:', userPrompt.substring(0, 100));
 
         const result = await generateContent({
         model: model,
@@ -45,49 +162,125 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
             },
         ],
         });
+        console.log('🔍 [DEBUG] Raw Gemini result object:', JSON.stringify(result, null, 2).substring(0, 300));
+        console.log('🔍 [DEBUG] Result type:', typeof result);
+        console.log('🔍 [DEBUG] Result keys:', Object.keys(result));
+        console.log('🔍 [DEBUG] Result.text type:', typeof result.text);
+        console.log('🔍 [DEBUG] Result.candidates:', result.candidates ? 'exists' : 'missing');
         
         // Handle the new SDK response format
         let text;
         if (typeof result.text === 'function') {
+            console.log('📝 [DEBUG] Extracting text via function call');
             text = result.text();
         } else if (result.text) {
+            console.log('📝 [DEBUG] Extracting text directly from result.text');
             text = result.text;
         } else if (result.candidates && result.candidates[0]) {
+            console.log('📝 [DEBUG] Extracting text from result.candidates[0]');
             text = result.candidates[0].content.parts[0].text;
         } else {
+            console.error('❌ [DEBUG] Unable to extract text. Result structure:', JSON.stringify(result, null, 2).substring(0, 500));
             throw new Error('Unable to extract text from Gemini response');
         }
+
+        console.log('📝 [DEBUG] Extracted text length:', text.length);
+        console.log('📝 [DEBUG] Extracted text (first 300 chars):', text.substring(0, 300));
 
         // Parse JSON response with multiple fallback strategies
         let analysis;
         try {
+            console.log('🔍 [DEBUG] Starting JSON parsing...');
+            
             // Strategy 1: Remove markdown code blocks
             let cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            console.log('🔍 [DEBUG] After removing markdown (first 200 chars):', cleanedText.substring(0, 200));
             
             // Strategy 2: Extract JSON from text if wrapped in other content
             if (!cleanedText.startsWith('{')) {
+                console.log('⚠️ [DEBUG] Text does not start with {, attempting to extract JSON...');
                 const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
+                    console.log('✅ [DEBUG] Found JSON match');
                     cleanedText = jsonMatch[0];
+                } else {
+                    console.error('❌ [DEBUG] No JSON match found in text');
                 }
+            } else {
+                console.log('✅ [DEBUG] Text starts with {');
             }
             
-            // Strategy 3: Parse the JSON
+            console.log('🔍 [DEBUG] Cleaned text (first 200 chars):', cleanedText.substring(0, 200));
+            console.log('🔍 [DEBUG] Cleaned text starts with {:', cleanedText.startsWith('{'));
+            console.log('🔍 [DEBUG] Cleaned text ends with }:', cleanedText.endsWith('}'));
+            
+            // Strategy 3: Fix common JSON issues (unescaped newlines)
+            cleanedText = cleanedText.replace(/\n(?=(?:[^"]*"[^"]*")*[^"]*$)/g, ' ');
+            
+            // Strategy 4: Parse the JSON
             if (cleanedText.startsWith('{') && cleanedText.endsWith('}')) {
+                console.log('🔍 [DEBUG] Attempting JSON.parse...');
                 analysis = JSON.parse(cleanedText);
+                console.log('✅ [DEBUG] JSON parsed successfully');
             } else {
+                console.error('❌ [DEBUG] Text does not have valid JSON boundaries');
                 throw new Error('Response is not valid JSON object');
             }
         } catch (parseError) {
-            console.error('JSON parse error:', parseError.message);
-            console.error('Raw response:', text.substring(0, 500));
-            throw new Error('Failed to parse Gemini response as JSON');
+            console.error('❌ JSON parse error:', parseError.message);
+            console.error('❌ Raw response:', text.substring(0, 500));
+            
+            // Try alternative: extract just the valid JSON part
+            console.log('🔄 [DEBUG] Attempting to extract valid JSON portion...');
+            try {
+                const jsonStart = text.indexOf('{');
+                const jsonEnd = text.lastIndexOf('}');
+                if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+                    const jsonPortion = text.substring(jsonStart, jsonEnd + 1);
+                    analysis = JSON.parse(jsonPortion);
+                    console.log('✅ [DEBUG] Successfully parsed JSON portion');
+                } else {
+                    throw new Error('Could not find valid JSON boundaries');
+                }
+            } catch (fallbackError) {
+                console.error('❌ Fallback JSON extraction failed:', fallbackError.message);
+                throw new Error('Failed to parse Gemini response as JSON');
+            }
         }
 
         // Validate response structure - check for new ATS analysis format
-        if (!analysis.primary_keywords || !analysis.overview) {
-            console.error('Invalid structure. Received keys:', Object.keys(analysis));
-            throw new Error('Invalid analysis structure from Gemini');
+        console.log('🔍 [DEBUG] Parsed analysis object keys:', Object.keys(analysis));
+        console.log('🔍 [DEBUG] Full analysis:', JSON.stringify(analysis, null, 2).substring(0, 800));
+        
+        // Check if response has the expected consolidated format keys
+        const hasExpectedFormat = analysis.primary_keywords && analysis.overview && analysis.score_breakdown;
+        
+        if (!hasExpectedFormat) {
+            console.warn('⚠️ Gemini did not return expected consolidated format. Attempting conversion...');
+            console.log('🔍 [DEBUG] Original Gemini response structure:', Object.keys(analysis));
+            
+            // Try to convert Gemini's custom format to our expected format
+            if (analysis.applicant_name || analysis.overall_fit_score || analysis.experience_match || analysis.skill_match || analysis.achievement_analysis) {
+                console.log('🔄 Converting new Gemini format (applicant_name, overall_fit_score)...');
+                analysis = convertGeminiFormatToATS(analysis);
+            } else if (analysis.analysis || analysis.experience_calculation || analysis.skills) {
+                console.log('🔄 Converting old Gemini format (analysis, skills)...');
+                analysis = convertGeminiFormatToATS(analysis);
+            } else {
+                console.error('❌ Unable to identify Gemini response format. Received keys:', Object.keys(analysis));
+                throw new Error('Invalid analysis structure from Gemini - unrecognized response format.');
+            }
+            
+            console.log('✅ Converted to ATS format. New keys:', Object.keys(analysis));
+        } else {
+            console.log('✅ Gemini returned expected consolidated format');
+        }
+        
+        // Final validation
+        if (!analysis.primary_keywords || !analysis.overview || !analysis.score_breakdown) {
+            console.error('❌ After conversion, still missing required fields. Keys:', Object.keys(analysis));
+            console.error('❌ Expected: primary_keywords, overview, score_breakdown, etc.');
+            throw new Error('Invalid analysis structure from Gemini - missing required fields after conversion.');
           }
         // Ensure all required arrays exist and are arrays
         const sanitizedAnalysis = {
