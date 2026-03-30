@@ -95,36 +95,56 @@ const startServer = async () => {
     try {
         logger.info('🚀 Starting AI Resume Tailoring Platform...\n');
 
-        // Start Express server immediately
+        // Test database connection first with timeout
+        logger.info('📊 Testing database connection...');
+        try {
+            const connectionPromise = testConnection();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database connection timeout')), 10000)
+            );
+            await Promise.race([connectionPromise, timeoutPromise]);
+        } catch (dbError) {
+            logger.warn('⚠️ Database connection failed, continuing anyway:', { error: dbError.message });
+        }
+
+        // Initialize database tables with timeout
+        logger.info('📊 Initializing database tables...');
+        try {
+            const initPromise = initDatabase();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database initialization timeout')), 15000)
+            );
+            await Promise.race([initPromise, timeoutPromise]);
+        } catch (dbError) {
+            logger.warn('⚠️ Database initialization failed, continuing anyway:', { error: dbError.message });
+        }
+
+        // Initialize feature flags with timeout
+        logger.info('� Initializing feature flags...');
+        try {
+            const flagsPromise = initializeFeatureFlagsTable();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Feature flags initialization timeout')), 5000)
+            );
+            await Promise.race([flagsPromise, timeoutPromise]);
+        } catch (error) {
+            logger.warn('⚠️ Feature flags initialization failed, continuing anyway:', { error: error.message });
+        }
+
+        // Initialize Firebase
+        logger.info('🔥 Initializing Firebase...');
+        try {
+            initFirebase();
+        } catch (error) {
+            logger.warn('⚠️ Firebase initialization failed:', { error: error.message });
+        }
+
+        // Start Express server after initialization attempts
         app.listen(PORT, () => {
             logger.info(`✅ Server running on http://localhost:${PORT}`);
             logger.info(`✅ Health check: http://localhost:${PORT}/api/ping\n`);
+            logger.info('✅ All services initialized');
         });
-
-        // Initialize database and other services in the background
-        (async () => {
-            try {
-                // Test database connection
-                logger.info('📊 Testing database connection...');
-                await testConnection();
-
-                // Initialize database tables
-                logger.info('📊 Initializing database tables...');
-                await initDatabase();
-
-                // Initialize feature flags
-                logger.info('🚩 Initializing feature flags...');
-                await initializeFeatureFlagsTable();
-
-                // Initialize Firebase
-                logger.info('🔥 Initializing Firebase...');
-                initFirebase();
-
-                logger.info('✅ All services initialized successfully');
-            } catch (error) {
-                logger.error('❌ Background initialization error:', { error: error.message });
-            }
-        })();
     } catch (error) {
         logger.error('❌ Failed to start server:', { error: error.message });
         process.exit(1);
