@@ -4,6 +4,31 @@ import { getATSAnalysisPrompt } from '../prompts/atsAnalysisPrompt.js';
 
 dotenv.config();
 
+const ATS_OPTIMIZATION_RULES = `Follow these ATS optimization directives while editing the provided LaTeX resume content:
+
+CRITICAL CONSTRAINTS (HIGHEST PRIORITY)
+- Strict content preservation: Do NOT significantly increase or decrease the total wording length. Maintain section order, headings, bullet counts, and overall line usage. Only remove a bullet if it is empty or clearly irrelevant, and do not add new bullets unless consolidating two existing ones is impossible without losing meaning.
+- Structured content usage: If master profile or structured content is provided, reference it only to refine existing sentences. Do not expand the resume length or introduce new sections or subsections.
+- No fabrication: Do NOT invent new achievements, metrics, tools, responsibilities, or experiences. Only rephrase existing information already present in the source content.
+- Safe LaTeX only: Use stable, widely supported commands already present (\\textbf{}, \\section{}, \\begin{itemize}...\\end{itemize}, basic spacing like \\ or \\vspace). NEVER introduce fragile primitives such as \\hbox, \\vbox, \\raise, \\lower, or \\kern, and do not add custom macros, new packages, or document-class/layout changes.
+- Minimal transformation: Treat this as optimization, not rewriting. Preserve original meaning, intent, and density while refining articulation.
+
+OBJECTIVES
+- Keyword optimization: Extract relevant skills, tools, and phrases from the job description and integrate them naturally into existing sentences without keyword stuffing or altering factual accuracy.
+- Bullet enhancement: Strengthen bullet phrasing with clear action verbs (Built, Led, Designed, Optimized, Scaled, Delivered) while keeping each bullet within 1–2 lines and preserving all substantive details.
+- Relevance alignment: Adjust emphasis to better match job description expectations without removing content. Slightly reorder emphasis inside a bullet if needed, but keep the same bullets.
+- Clarity & conciseness: Remove redundancies only when doing so does not reduce factual content or length. Improve readability and flow while preserving overall content volume.
+- ATS compatibility: Favor plain text where possible, avoid inline math or unusual symbols, and keep formatting clean for parsing.
+
+STRICT OUTPUT RULES
+- Output MUST be valid LaTeX only—no explanations, markdown, code fences, or placeholders.
+- Preserve existing sections, ordering, spacing, and the one-page layout. Do not modify the document class, preamble, layout commands, or introduce new packages.
+- Ensure the result compiles successfully in minimal pdflatex environments without fragile constructs.
+- Maintain the same amount of substantive content; if a phrase is tightened, redistribute necessary keywords so total coverage remains equivalent.
+- Prefer plain text over complex formatting and avoid special symbols that require additional packages.
+
+Only rewrite existing sentences to improve clarity and ATS alignment while preserving the original content volume.`;
+
 // Get Gemini model with user's API key
 const getModel = (apiKey) => {
     if (!apiKey) {
@@ -367,14 +392,9 @@ export const optimizeSectionWithGemini = async (
     const generateContent = getModel(userConfig.apiKey);
     const model = userConfig.model || 'gemini-2.5-flash';
 
-    const systemPrompt = `You are a professional resume optimization expert. Your task is to optimize a selected section of a resume to better match a job description.
+    const systemPrompt = `You are a professional resume optimization expert specializing in ATS-compliant LaTeX resumes.
 
-IMPORTANT RULES:
-1. Optimize ONLY the selected text provided
-2. Preserve LaTeX syntax and commands
-3. Keep the same structure and formatting
-4. Make the content more relevant to the job description
-5. Return ONLY the optimized text, nothing else
+${ATS_OPTIMIZATION_RULES}
 
 Job Description Context:
 ${jobDescription}
@@ -444,7 +464,10 @@ CRITICAL RULES:
 7. Do NOT include any explanations, markdown formatting, or code blocks
 8. Do NOT add comments or notes
 
-You are a CONTENT EDITOR, not a TEMPLATE DESIGNER.`;
+You are a CONTENT EDITOR, not a TEMPLATE DESIGNER.
+
+${ATS_OPTIMIZATION_RULES}
+`;
 
     const userPrompt = `I need you to update the content of this LaTeX resume to better match the job description below.
 

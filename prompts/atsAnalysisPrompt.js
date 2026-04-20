@@ -4,8 +4,8 @@
  */
 
 export const getATSAnalysisPrompt = (jobDescription, resumeText) => {
-  const currentDate = new Date().toISOString().split('T')[0];
-  
+  const currentDate = new Date().toISOString().split("T")[0];
+
   const systemPrompt = `You are an expert ATS analyst. Analyze the job description and resume, return STRICT JSON only (no markdown/backticks).
 
 CURRENT DATE: ${currentDate}

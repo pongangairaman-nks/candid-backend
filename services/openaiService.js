@@ -4,6 +4,32 @@ import { getATSAnalysisPrompt } from '../prompts/atsAnalysisPrompt.js';
 
 dotenv.config();
 
+const ATS_OPTIMIZATION_RULES = `Follow these directives to transform the provided LaTeX resume into an ATS-optimized version while keeping it production-ready and identical in scope:
+
+CRITICAL CONSTRAINTS
+- Strict content preservation: keep total wording within +/-5% of the source. Maintain the same section hierarchy, bullet counts, ordering, and approximate line usage. Do NOT merge, split, add, or remove bullets or sentences unless the original content is empty or duplicated.
+- Structured content usage: reference any master profile data only to refine existing sentences—never to expand or create new sections.
+- No fabrication: do NOT invent new achievements, metrics, tools, responsibilities, or experiences. Only enhance wording for what already exists.
+- Safe LaTeX only: use stable commands already present (\\textbf{}, \\section{}, \\begin{itemize}...\\end{itemize}, basic spacing like \\ or \\vspace). NEVER introduce fragile primitives such as \\hbox, \\vbox, \\raise, \\lower, or \\kern, and do not add custom macros, new packages, or layout changes.
+- Minimal transformation: treat this as precise optimization, not rewriting. Preserve original meaning, intent, and density in every sentence.
+- One-page guarantee: the output must preserve the single-page layout. Avoid changes that expand spacing or push content beyond one page.
+
+OBJECTIVES
+- Keyword integration: weave relevant skills, tools, and phrases from the job description naturally into existing sentences without keyword stuffing or altering factual accuracy.
+- Bullet articulation: strengthen bullet phrasing with clear action verbs (Built, Led, Designed, Optimized, Scaled, Delivered) while keeping each bullet within one to two lines and retaining all substantive details.
+- Relevance alignment: adjust emphasis inside bullets to reflect the job description, but keep every bullet present.
+- Clarity & conciseness: remove redundancy only when total content volume remains the same. Improve readability and flow without shortening the document.
+- ATS compatibility: favor plain text, avoid inline math or unusual symbols, and keep formatting clean for parsing.
+
+OUTPUT FORMAT
+- Return RAW LaTeX text only—no explanations, markdown, comments, or code fences. Do NOT wrap the response in triple backticks.
+- Preserve the existing document class, preamble, spacing commands, and packages exactly as provided.
+- Ensure the result compiles in minimal pdflatex environments without fragile constructs.
+- Maintain substantive coverage: when tightening phrasing, redistribute essential keywords so overall coverage matches the source.
+- Avoid special characters that require new packages and keep leading/trailing blank lines consistent with the input.
+
+Only rewrite existing sentences to improve clarity and ATS alignment while preserving the original content volume.`;
+
 /**
  * Optimize a selected section of the resume using OpenAI
  */
@@ -22,14 +48,9 @@ export const optimizeSectionWithOpenAI = async (
         apiKey: userConfig.apiKey,
     });
 
-    const systemPrompt = `You are a professional resume optimization expert. Your task is to optimize a selected section of a resume to better match a job description.
+    const systemPrompt = `You are a professional resume optimization expert specializing in ATS-compliant LaTeX resumes.
 
-IMPORTANT RULES:
-1. Optimize ONLY the selected text provided
-2. Preserve LaTeX syntax and commands
-3. Keep the same structure and formatting
-4. Make the content more relevant to the job description
-5. Return ONLY the optimized text, nothing else
+${ATS_OPTIMIZATION_RULES}
 
 Job Description Context:
 ${jobDescription}
@@ -256,7 +277,9 @@ CRITICAL RULES:
 7. Do NOT include any explanations, markdown formatting, or code blocks
 8. Do NOT add comments or notes
 
-You are a CONTENT EDITOR, not a TEMPLATE DESIGNER.`;
+You are a CONTENT EDITOR, not a TEMPLATE DESIGNER.
+
+${ATS_OPTIMIZATION_RULES}`;
 
     const userPrompt = `I need you to update the content of this LaTeX resume to better match the job description below.
 

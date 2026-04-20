@@ -20,23 +20,28 @@ router.post('/signup', async (req, res) => {
     // Validate input
     if (!email || !password) {
       return res.status(400).json({
-        status: 'error',
-        message: 'Email and password are required',
+        status: "error",
+        message: "Email and password are required",
       });
     }
 
     if (password?.length < 8) {
       return res.status(400).json({
-        status: 'error',
-        message: 'Password must be at least 8 characters long',
+        status: "error",
+        message: "Password must be at least 8 characters long",
       });
     }
 
-    const result = await signupUser(email, password, firstName || '', lastName || '');
+    const result = await signupUser(
+      email,
+      password,
+      firstName || "",
+      lastName || "",
+    );
 
     res.status(201).json({
-      status: 'success',
-      message: 'User registered successfully',
+      status: "success",
+      message: "User registered successfully",
       data: {
         user: result.user,
         token: result.token,
