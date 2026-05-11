@@ -434,7 +434,17 @@ Please optimize this section to better match the job description while preservin
             throw new Error('Unable to extract text from Gemini response');
         }
 
-        return optimizedText.trim();
+        const trimmedText = optimizedText.trim();
+
+        // Validate that the response contains a complete LaTeX document
+        if (!trimmedText.includes('\\end{document}')) {
+            console.warn('⚠️ Warning: Optimized LaTeX may be incomplete - missing \\end{document}');
+            console.warn('Response length:', trimmedText.length);
+            console.warn('Last 200 chars:', trimmedText.slice(-200));
+            throw new Error('Incomplete LaTeX response: missing \\end{document}. The response was likely truncated. Please try again or increase max_tokens.');
+        }
+
+        return trimmedText;
     } catch (error) {
         console.error('❌ Gemini section optimization error:', error.message);
         throw new Error(`Failed to optimize section with Gemini: ${error.message}`);

@@ -68,7 +68,7 @@ Please optimize this section to better match the job description while preservin
     try {
         const message = await client.chat.completions.create({
             model: userConfig.model || 'gpt-4o-mini',
-            max_tokens: 2048,
+            max_tokens: 4096,
             temperature: 0.7,
             messages: [
                 {
@@ -88,7 +88,17 @@ Please optimize this section to better match the job description while preservin
             throw new Error('No response from OpenAI API');
         }
 
-        return optimizedText;
+        const trimmedText = optimizedText.trim();
+
+        // Validate that the response contains a complete LaTeX document
+        if (!trimmedText.includes('\\end{document}')) {
+            console.warn('⚠️ Warning: Optimized LaTeX may be incomplete - missing \\end{document}');
+            console.warn('Response length:', trimmedText.length);
+            console.warn('Last 200 chars:', trimmedText.slice(-200));
+            throw new Error('Incomplete LaTeX response: missing \\end{document}. The response was likely truncated. Please try again or increase max_tokens.');
+        }
+
+        return trimmedText;
     } catch (error) {
         console.error('❌ OpenAI section optimization error:', error);
         throw new Error(`Failed to optimize section with OpenAI: ${error.message}`);

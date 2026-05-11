@@ -85,8 +85,8 @@ router.post('/analysis', authenticateToken, async (req, res) => {
         });
       }
 
+      let provider = userConfig.provider || 'gemini';
       try {
-        const provider = userConfig.provider || 'gemini';
         const analyzerConfig = {
           apiKey: userConfig.apiKey,
           model: userConfig.model,

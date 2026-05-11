@@ -378,7 +378,16 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
 
     } catch (error) {
         console.error('❌ Claude API error:', error.message);
-        throw new Error(`Failed to analyze job description: ${error.message}`);
+        console.error('🔍 [DEBUG] Full error object:', error);
+        
+        // Re-throw with original error message to preserve API error details (401, 404, etc.)
+        if (error.message.includes('401') || error.message.includes('Unauthorized') || error.message.includes('invalid_api_key')) {
+            throw new Error(`Claude API authentication failed: ${error.message}`);
+        } else if (error.message.includes('404') || error.message.includes('not_found_error')) {
+            throw new Error(`Claude model not found: ${error.message}`);
+        } else {
+            throw error;
+        }
     }
 };
 
@@ -443,7 +452,7 @@ Please optimize this section to better match the job description while preservin
     try {
         const response = await client.messages.create({
             model: userConfig.model || 'claude-opus-4-1-20250805',
-            max_tokens: 4000,
+            max_tokens: 8000,
             system: systemPrompt,
             messages: [
                 {
@@ -454,9 +463,28 @@ Please optimize this section to better match the job description while preservin
         });
 
         const optimizedText = response.content[0].type === 'text' ? response.content[0].text : '';
-        return optimizedText.trim();
+        const trimmedText = optimizedText.trim();
+
+        // Validate that the response contains a complete LaTeX document
+        if (!trimmedText.includes('\\end{document}')) {
+            console.warn('⚠️ Warning: Optimized LaTeX may be incomplete - missing \\end{document}');
+            console.warn('Response length:', trimmedText.length);
+            console.warn('Last 200 chars:', trimmedText.slice(-200));
+            throw new Error('Incomplete LaTeX response: missing \\end{document}. The response was likely truncated. Please try again or increase max_tokens.');
+        }
+
+        return trimmedText;
     } catch (error) {
         console.error('❌ Claude section optimization error:', error.message);
-        throw new Error(`Failed to optimize section with Claude: ${error.message}`);
+        console.error('🔍 [DEBUG] Full error object:', error);
+        
+        // Re-throw with original error message to preserve API error details (401, 404, etc.)
+        if (error.message.includes('401') || error.message.includes('Unauthorized') || error.message.includes('invalid_api_key')) {
+            throw new Error(`Claude API authentication failed: ${error.message}`);
+        } else if (error.message.includes('404') || error.message.includes('not_found_error')) {
+            throw new Error(`Claude model not found: ${error.message}`);
+        } else {
+            throw error;
+        }
     }
 };
