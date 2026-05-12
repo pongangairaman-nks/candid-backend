@@ -17,6 +17,7 @@ const { renderLatex, validateLatex } = require('../services/resumeRenderService'
 const { analyzeResumeWithLLM } = require('../services/atsAnalysisV2Service');
 const { optimizeUntilTarget } = require('../services/iterativeOptimizationService');
 const { getUserLLMConfig } = require('../services/llmConfigService');
+const { logTokenUsage } = require('../services/tokenTrackingService');
 
 /**
  * POST /api/v2/resume/upload-master
@@ -230,6 +231,19 @@ router.post('/analyze', authenticateToken, async (req, res) => {
       userConfig
     );
 
+    // Log token usage (estimate: ~1000 input, ~500 output for analysis)
+    try {
+      await logTokenUsage({
+        userId,
+        phase: 'analysis',
+        model: userConfig.model,
+        inputTokens: 1000,
+        outputTokens: 500
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log token usage:', logError.message);
+    }
+
     // Store analysis in database
     await pool.query(
       `UPDATE resumes
@@ -300,6 +314,21 @@ router.post('/optimize-to-target', authenticateToken, async (req, res) => {
       3 // max iterations
     );
     const duration = Date.now() - startTime;
+
+    // Log token usage for optimization (estimate: ~3000 input, ~2000 output per iteration)
+    try {
+      const estimatedTokens = result.iterations * 3000; // input tokens
+      const estimatedOutput = result.iterations * 2000; // output tokens
+      await logTokenUsage({
+        userId,
+        phase: 'optimization',
+        model: userConfig.model,
+        inputTokens: estimatedTokens,
+        outputTokens: estimatedOutput
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log token usage:', logError.message);
+    }
 
     // Get template from database
     const templateResult = await pool.query(
