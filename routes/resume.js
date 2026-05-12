@@ -202,7 +202,7 @@ router.post("/save-master-template", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/resume/master-template - Get master resume template
+// GET /api/resume/master-template - Get master resume template with extracted JSON and Handlebars template
 router.get("/master-template", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -210,7 +210,7 @@ router.get("/master-template", authenticateToken, async (req, res) => {
     console.log(`📄 Fetching master template for user ${userId}`);
 
     const result = await pool.query(
-      `SELECT id, original_latex, created_at, updated_at 
+      `SELECT id, original_latex, extracted_content_json, created_latex_template, created_at, updated_at 
        FROM resumes 
        WHERE user_id = $1 
        ORDER BY id ASC 
@@ -224,25 +224,29 @@ router.get("/master-template", authenticateToken, async (req, res) => {
         status: "success",
         data: {
           templateId: null,
-          latexCode: "",
-          sections: [],
+          originalLatex: "",
+          extractedJson: null,
+          handlebarsTemplate: "",
         },
       });
     }
 
     const template = result.rows[0];
-    const sections = extractSectionsFromLatex(template.original_latex);
+    const extractedJson = typeof template.extracted_content_json === 'string'
+      ? JSON.parse(template.extracted_content_json)
+      : template.extracted_content_json;
 
     console.log(
-      `✅ Master template found for user ${userId} with ${sections.length} sections`,
+      `✅ Master template found for user ${userId}`,
     );
 
     res.status(200).json({
       status: "success",
       data: {
         templateId: template.id,
-        latexCode: template.original_latex,
-        sections: formatSectionsForResponse(sections),
+        originalLatex: template.original_latex,
+        extractedJson: extractedJson,
+        handlebarsTemplate: template.created_latex_template,
         createdAt: template.created_at,
         updatedAt: template.updated_at,
       },
@@ -257,7 +261,7 @@ router.get("/master-template", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/resume/sections - Get sections from user's master resume
+// GET /api/resume/sections - Get sections from user's master resume (extracted JSON)
 router.get("/sections", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -265,7 +269,7 @@ router.get("/sections", authenticateToken, async (req, res) => {
     console.log(`📋 Fetching sections for user ${userId}`);
 
     const result = await pool.query(
-      `SELECT original_latex 
+      `SELECT extracted_content_json 
        FROM resumes 
        WHERE user_id = $1 
        ORDER BY id ASC 
@@ -278,20 +282,21 @@ router.get("/sections", authenticateToken, async (req, res) => {
       return res.status(200).json({
         status: "success",
         data: {
-          sections: [],
+          sections: {},
         },
       });
     }
 
-    const latexCode = result.rows[0].original_latex;
-    const sections = extractSectionsFromLatex(latexCode);
+    const extractedJson = typeof result.rows[0].extracted_content_json === 'string'
+      ? JSON.parse(result.rows[0].extracted_content_json)
+      : result.rows[0].extracted_content_json;
 
-    console.log(`✅ Found ${sections.length} sections for user ${userId}`);
+    console.log(`✅ Found sections for user ${userId}`);
 
     res.status(200).json({
       status: "success",
       data: {
-        sections: formatSectionsForResponse(sections),
+        sections: extractedJson?.sections || {},
       },
     });
   } catch (error) {
