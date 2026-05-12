@@ -2,8 +2,8 @@
  * Iterative Optimization Service
  * 
  * Handles:
- * 1. Iteratively optimizing resume until 80-90+ ATS score
- * 2. Max 3 iterations with early exit if score >= 80
+ * 1. Iteratively optimizing resume until 85+ ATS score
+ * 2. Max 3 iterations with early exit if score >= 85
  * 3. Plateau detection (stop if improvement < 2%)
  * 4. Tracking optimization history
  */
@@ -15,14 +15,14 @@ import { optimizeWeakSectionsV2 } from './weakSectionOptimizationService.js';
  * Iteratively optimize resume until target score is reached
  * 
  * Flow:
- * 1. Iteration 1: Analyze → If score >= 80: STOP
- * 2. Iteration 2: Optimize + Analyze → If score >= 80: STOP
+ * 1. Iteration 1: Analyze → If score >= 85: STOP
+ * 2. Iteration 2: Optimize + Analyze → If score >= 85: STOP
  * 3. Iteration 3: Optimize + Analyze → STOP (max reached)
  * 
  * @param {Object} resumeContentJson - Initial resume content JSON
  * @param {string} jobDescription - Raw job description
  * @param {Object} userConfig - User's LLM config
- * @param {number} targetScore - Target ATS score (default: 90)
+ * @param {number} targetScore - Target ATS score (default: 85)
  * @param {number} maxIterations - Max iterations (default: 3)
  * @returns {Promise<Object>} - Optimized content, final score, iterations, history
  */
@@ -30,7 +30,7 @@ async function optimizeUntilTarget(
   resumeContentJson,
   jobDescription,
   userConfig,
-  targetScore = 90,
+  targetScore = 85,
   maxIterations = 3
 ) {
   if (!resumeContentJson) {
@@ -120,21 +120,7 @@ async function optimizeUntilTarget(
       }
     }
 
-    // Step 4: Check if we've reached 80+ on first iteration (early exit)
-    if (iteration === 1 && currentScore >= 80) {
-      console.log(`\n✅ Score >= 80 on first iteration. Stopping optimization.`);
-      console.log(`${'='.repeat(60)}\n`);
-      return {
-        optimized_content_json: currentContent,
-        final_ats_score: currentScore,
-        iterations: iteration,
-        target_reached: false,
-        early_exit: true,
-        optimization_history: optimizationHistory
-      };
-    }
-
-    // Step 5: Optimize weak sections
+    // Step 4: Optimize weak sections
     if (!atsAnalysis.weak_sections || atsAnalysis.weak_sections.length === 0) {
       console.log(`\n✅ No weak sections found. Resume is well-optimized.`);
       console.log(`${'='.repeat(60)}\n`);
@@ -167,9 +153,28 @@ async function optimizeUntilTarget(
   }
 
   // Max iterations reached
-  console.log(`\n⚠️ Max iterations (${maxIterations}) reached.`);
+  console.log(`\n Max iterations (${maxIterations}) reached.`);
   console.log(`   Final Score: ${currentScore}/100`);
+  console.log(`   Target Score: ${targetScore}/100`);
+  console.log(`   Gap: ${targetScore - currentScore} points`);
   console.log(`${'='.repeat(60)}\n`);
+
+  // Analyze why we couldn't reach target
+  const scoreGap = targetScore - currentScore;
+  const improvementTrend = optimizationHistory.length > 1 
+    ? optimizationHistory[optimizationHistory.length - 1].score - optimizationHistory[0].score
+    : 0;
+
+  let recommendation = '';
+  if (scoreGap > 10) {
+    recommendation = 'Resume has significant gaps. Consider adding more relevant skills, keywords, and quantifiable achievements that match the job description.';
+  } else if (scoreGap > 5) {
+    recommendation = 'Resume is close to target. Minor improvements in keyword integration and achievement descriptions could help reach the target score.';
+  } else {
+    recommendation = 'Resume is very close to target. The remaining gap may require manual fine-tuning or additional relevant experience.';
+  }
+
+  console.log(`📋 Recommendation: ${recommendation}\n`);
 
   return {
     optimized_content_json: currentContent,
@@ -177,7 +182,10 @@ async function optimizeUntilTarget(
     iterations: iteration,
     target_reached: currentScore >= targetScore,
     max_iterations_reached: true,
-    optimization_history: optimizationHistory
+    optimization_history: optimizationHistory,
+    scoreGap: scoreGap,
+    improvementTrend: improvementTrend,
+    recommendation: recommendation
   };
 }
 

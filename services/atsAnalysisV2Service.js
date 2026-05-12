@@ -32,7 +32,7 @@ async function analyzeResumeWithLLM(jobDescription, resumeContentJson, userConfi
   }
 
   const client = new Anthropic({ apiKey: userConfig.apiKey });
-  const model = userConfig.model || 'claude-3-5-sonnet-latest';
+  const model = userConfig.model || 'claude-opus-4-1-20250805';
 
   const systemPrompt = `You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist.
 
@@ -134,8 +134,11 @@ Return ONLY the JSON object, no markdown, no explanations.`;
       analysis = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('❌ Failed to parse Claude response as JSON');
-      console.error('Response:', cleanedResponse.substring(0, 500));
-      throw new Error(`Invalid JSON response from Claude: ${parseError.message}`);
+      console.error(`Response length: ${cleanedResponse.length}`);
+      console.error(`Response preview (first 500 chars): ${cleanedResponse.substring(0, 500)}`);
+      console.error(`Response preview (last 500 chars): ${cleanedResponse.substring(Math.max(0, cleanedResponse.length - 500))}`);
+      console.error(`Parse error: ${parseError.message}`);
+      throw new Error(`Invalid JSON response from Claude: ${parseError.message}. Response may be incomplete or malformed.`);
     }
 
     // Validate analysis structure

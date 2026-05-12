@@ -46,7 +46,9 @@ async function optimizeWeakSectionsV2(
   }
 
   const client = new Anthropic({ apiKey: userConfig.apiKey });
-  const model = userConfig.model || 'claude-3-5-sonnet-latest';
+  const model = userConfig.model || 'claude-opus-4-1-20250805';
+  
+  console.log(`\n    Using model: ${model}`);
 
   // Deep copy to avoid mutating original
   const optimizedContent = JSON.parse(JSON.stringify(contentJson));
@@ -68,8 +70,15 @@ async function optimizeWeakSectionsV2(
       console.log(`\n    🔄 Optimizing: ${weakSection.section_name}...`);
 
       // Get the section from content
-      const sectionPath = weakSection.section_key.split('.');
-      const section = getNestedValue(optimizedContent, sectionPath);
+      // Handle both "skills" and "sections.skills" formats
+      let sectionPath = weakSection.section_key.split('.');
+      let section = getNestedValue(optimizedContent, sectionPath);
+
+      // If not found, try with "sections." prefix
+      if (!section && !weakSection.section_key.startsWith('sections.')) {
+        sectionPath = ['sections', ...sectionPath];
+        section = getNestedValue(optimizedContent, sectionPath);
+      }
 
       if (!section) {
         console.warn(`    ⚠️ Section not found: ${weakSection.section_key}`);
@@ -123,14 +132,18 @@ async function optimizeWeakSectionsV2(
       // Update section in content
       if (section.type === 'text') {
         // For text sections, update content directly
+        const originalContent = section.content;
         section.content = optimizedSection.content || optimizedSection;
+        console.log(`    📝 Text updated: ${originalContent?.substring(0, 50)}... → ${section.content?.substring(0, 50)}...`);
       } else if (section.type === 'list' && Array.isArray(section.items)) {
         // For list sections, update items
+        const originalCount = section.items?.length || 0;
         if (Array.isArray(optimizedSection.items)) {
           section.items = optimizedSection.items;
         } else if (Array.isArray(optimizedSection)) {
           section.items = optimizedSection;
         }
+        console.log(`    📝 List updated: ${originalCount} items → ${section.items?.length || 0} items`);
       }
 
       setNestedValue(optimizedContent, sectionPath, section);

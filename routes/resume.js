@@ -621,21 +621,7 @@ ${optimizationGuidelines}`
           });
         }
         
-        // Return early if score is already 85+
-        if (atsScore >= 85) {
-          return res.status(200).json({
-            status: "success",
-            message: "Resume is already optimized",
-            data: {
-              atsScore: atsScore,
-              iterations: 0,
-              targetReached: true,
-              latencyMs: Date.now() - startTime,
-            },
-          });
-        }
-        
-        // Optimize if score is between 50-85
+        // Always optimize if score is between 50-85 (or if already provided as 85+, still optimize to ensure)
         console.log(`📊 Optimizing resume (current score: ${atsScore}/100)...`);
         const { optimizeUntilTarget } = await import('../services/iterativeOptimizationService.js');
         
@@ -645,6 +631,15 @@ ${optimizationGuidelines}`
           userConfig,
           85, // target score - must reach 85+
         );
+        
+        // Check if optimization reached target
+        if (optimizationResult.final_ats_score >= 85) {
+          console.log(`✅ Optimization successful! Score: ${optimizationResult.final_ats_score}/100`);
+        } else if (optimizationResult.plateau_detected) {
+          console.log(`⚠️ Score plateau detected. Final score: ${optimizationResult.final_ats_score}/100`);
+        } else {
+          console.log(`⚠️ Max iterations reached. Final score: ${optimizationResult.final_ats_score}/100`);
+        }
 
         logger.info(`✅ JSON optimization complete (Score: ${optimizationResult.final_ats_score}/100)`);
 
