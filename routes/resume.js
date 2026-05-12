@@ -454,6 +454,7 @@ router.post(
         prompt,
         masterProfile,
         extractedContentJson,
+        currentAtsScore,
         resume,
         quality = "high",
         mode = "global",
@@ -579,7 +580,63 @@ ${optimizationGuidelines}`
       if (extractedContentJson) {
         console.log('📊 Optimizing extracted JSON against job description...');
         
-        // Use the iterative optimization service to optimize the JSON
+        let atsScore = currentAtsScore;
+        
+        // If currentAtsScore is not provided, analyze it first
+        if (atsScore === undefined || atsScore === null) {
+          console.log('📊 Analyzing ATS score first...');
+          const { analyzeResumeWithLLM } = await import('../services/atsAnalysisV2Service.js');
+          
+          try {
+            const analysis = await analyzeResumeWithLLM(
+              jobDescription,
+              extractedContentJson,
+              userConfig
+            );
+            atsScore = analysis.ats_score;
+            console.log(`📊 ATS Score analyzed: ${atsScore}/100`);
+          } catch (analysisError) {
+            console.error('❌ Failed to analyze ATS score:', analysisError.message);
+            return res.status(500).json({
+              status: "error",
+              message: "Failed to analyze resume ATS score",
+              error: process.env.NODE_ENV === 'development' ? analysisError.message : undefined
+            });
+          }
+        } else {
+          console.log(`📊 Using provided ATS score: ${atsScore}/100`);
+        }
+        
+        // Return early if score is below 50
+        if (atsScore < 50) {
+          return res.status(200).json({
+            status: "success",
+            message: "Resume score is below 50",
+            data: {
+              atsScore: atsScore,
+              iterations: 0,
+              targetReached: false,
+              latencyMs: Date.now() - startTime,
+            },
+          });
+        }
+        
+        // Return early if score is already 85+
+        if (atsScore >= 85) {
+          return res.status(200).json({
+            status: "success",
+            message: "Resume is already optimized",
+            data: {
+              atsScore: atsScore,
+              iterations: 0,
+              targetReached: true,
+              latencyMs: Date.now() - startTime,
+            },
+          });
+        }
+        
+        // Optimize if score is between 50-85
+        console.log(`📊 Optimizing resume (current score: ${atsScore}/100)...`);
         const { optimizeUntilTarget } = await import('../services/iterativeOptimizationService.js');
         
         const optimizationResult = await optimizeUntilTarget(
