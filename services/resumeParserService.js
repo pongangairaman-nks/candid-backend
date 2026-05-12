@@ -157,13 +157,23 @@ Return ONLY the JSON object, no markdown, no explanations.`;
       throw new Error('Empty response from Claude');
     }
 
+    // Strip markdown code blocks if present (```json ... ```)
+    let cleanedResponse = responseText.trim();
+    if (cleanedResponse.startsWith('```')) {
+      // Remove opening code block (```json or ```)
+      cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/, '');
+      // Remove closing code block (```)
+      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/, '');
+      console.log('✅ Stripped markdown code blocks from response');
+    }
+
     // Parse JSON response
     let extractedJson;
     try {
-      extractedJson = JSON.parse(responseText);
+      extractedJson = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('❌ Failed to parse Claude response as JSON');
-      console.error('Response:', responseText.substring(0, 500));
+      console.error('Response:', cleanedResponse.substring(0, 500));
       throw new Error(`Invalid JSON response from Claude: ${parseError.message}`);
     }
 

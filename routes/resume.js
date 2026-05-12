@@ -13,10 +13,13 @@ import {
   extractSectionsFromLatex,
   formatSectionsForResponse,
 } from "../utils/sectionParser.js";
+import { extractJsonFromLatex, convertLatexToTemplate } from "../services/resumeParserService.js";
+import { logTokenUsage } from "../services/tokenTrackingService.js";
 
 const router = express.Router();
 
 // POST /api/resume/save-master-template - Save master resume template
+// Extracts JSON and template from LaTeX using LLM
 router.post("/save-master-template", authenticateToken, async (req, res) => {
   try {
     const { latexCode } = req.body;
@@ -30,47 +33,163 @@ router.post("/save-master-template", authenticateToken, async (req, res) => {
       });
     }
 
-    // Check if user already has a master template
-    const existingTemplate = await pool.query(
-      "SELECT id FROM resumes WHERE user_id = $1 AND id = (SELECT MIN(id) FROM resumes WHERE user_id = $1)",
-      [userId],
-    );
+    console.log(`📄 Processing master template for user ${userId}`);
 
-    let result;
-    if (existingTemplate.rows?.length > 0) {
-      // Update existing master template
-      result = await pool.query(
-        `UPDATE resumes 
-         SET original_latex = $1, master_resume_text = $2, updated_at = NOW()
-         WHERE user_id = $3 AND id = $4
-         RETURNING id, original_latex, updated_at`,
-        [latexCode, latexCode, userId, existingTemplate.rows?.[0]?.id],
-      );
-    } else {
-      // Create new master template
-      result = await pool.query(
-        `INSERT INTO resumes (user_id, original_latex, master_resume_text, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
-         RETURNING id, original_latex, created_at`,
-        [userId, latexCode, latexCode],
-      );
+    // Get user's LLM config or use environment defaults
+    let userConfig;
+    try {
+      userConfig = await getUserLLMConfig(userId, 'generator');
+      console.log(`✅ User LLM config retrieved:`, userConfig?.provider);
+    } catch (configError) {
+      console.error(`❌ Error getting LLM config:`, configError.message);
     }
 
-    if (result.rows?.length === 0) {
-      return res.status(500).json({
+    // Fallback to environment variables if no user config
+    if (!userConfig) {
+      console.log(`⚠️ No user LLM config found, using environment defaults`);
+      userConfig = {
+        provider: process.env.LLM_PROVIDER || 'claude',
+        model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest',
+        apiKey: process.env.CLAUDE_API_KEY,
+      };
+    }
+
+    if (!userConfig.apiKey) {
+      return res.status(400).json({
         status: "error",
-        message: "Failed to save master template",
+        message: "LLM API key not configured. Please set up your LLM settings.",
       });
     }
 
-    const template = result.rows?.[0];
+    // Extract JSON from LaTeX using LLM
+    let extractedJson;
+    try {
+      console.log(`🔍 Extracting JSON from LaTeX...`);
+      extractedJson = await extractJsonFromLatex(latexCode, userConfig);
+      console.log(`✅ JSON extracted successfully`);
+    } catch (extractError) {
+      console.error(`❌ Error extracting JSON:`, extractError.message);
+      return res.status(400).json({
+        status: "error",
+        message: "Failed to extract resume content from LaTeX",
+        error: process.env.NODE_ENV === "development" ? extractError.message : undefined,
+      });
+    }
+
+    if (!extractedJson) {
+      return res.status(400).json({
+        status: "error",
+        message: "Failed to extract resume content from LaTeX - no data returned",
+      });
+    }
+
+    // Convert LaTeX to Handlebars template
+    let template;
+    try {
+      console.log(`📝 Creating Handlebars template...`);
+      template = await convertLatexToTemplate(latexCode, userConfig);
+      console.log(`✅ Template created successfully`);
+    } catch (templateError) {
+      console.error(`❌ Error creating template:`, templateError.message);
+      return res.status(400).json({
+        status: "error",
+        message: "Failed to create template from LaTeX",
+        error: process.env.NODE_ENV === "development" ? templateError.message : undefined,
+      });
+    }
+
+    if (!template) {
+      return res.status(400).json({
+        status: "error",
+        message: "Failed to create template from LaTeX - no data returned",
+      });
+    }
+
+    // Check if user already has a master template
+    let existingTemplate;
+    try {
+      existingTemplate = await pool.query(
+        "SELECT id FROM resumes WHERE user_id = $1 AND id = (SELECT MIN(id) FROM resumes WHERE user_id = $1)",
+        [userId],
+      );
+      console.log(`✅ Checked for existing template: ${existingTemplate.rows?.length > 0 ? 'Found' : 'Not found'}`);
+    } catch (dbError) {
+      console.error(`❌ Error checking existing template:`, dbError.message);
+      return res.status(500).json({
+        status: "error",
+        message: "Database error while checking existing template",
+        error: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+      });
+    }
+
+    let result;
+    try {
+      if (existingTemplate.rows?.length > 0) {
+        console.log(`📝 Updating existing template...`);
+        // Update existing master template
+        result = await pool.query(
+          `UPDATE resumes 
+           SET original_latex = $1, 
+               master_resume_text = $2, 
+               extracted_content_json = $3,
+               created_latex_template = $4,
+               updated_at = NOW()
+           WHERE user_id = $5 AND id = $6
+           RETURNING id, original_latex, extracted_content_json, created_latex_template, updated_at`,
+          [latexCode, latexCode, JSON.stringify(extractedJson), template, userId, existingTemplate.rows?.[0]?.id],
+        );
+      } else {
+        console.log(`📝 Creating new template...`);
+        // Create new master template
+        result = await pool.query(
+          `INSERT INTO resumes (user_id, original_latex, master_resume_text, extracted_content_json, created_latex_template, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+           RETURNING id, original_latex, extracted_content_json, created_latex_template, created_at`,
+          [userId, latexCode, latexCode, JSON.stringify(extractedJson), template],
+        );
+      }
+      console.log(`✅ Database operation successful`);
+    } catch (dbError) {
+      console.error(`❌ Error saving template to database:`, dbError.message);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to save master template to database",
+        error: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+      });
+    }
+
+    if (result.rows?.length === 0) {
+      console.error(`❌ No rows returned from database operation`);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to save master template - no data returned",
+      });
+    }
+
+    const savedTemplate = result.rows?.[0];
+    const savedJson = typeof savedTemplate.extracted_content_json === 'string' 
+      ? JSON.parse(savedTemplate.extracted_content_json) 
+      : savedTemplate.extracted_content_json;
+
+    // Log token usage if available
+    try {
+      if (userConfig.model) {
+        await logTokenUsage(userId, 'extraction', userConfig.model, 0, 0);
+        console.log(`✅ Token usage logged`);
+      }
+    } catch (logError) {
+      console.warn(`⚠️ Failed to log token usage:`, logError.message);
+    }
 
     res.status(200).json({
       status: "success",
-      message: "Master template saved successfully",
+      message: "Master template saved successfully with extracted content",
       data: {
-        templateId: template.id,
-        savedAt: template.updated_at || template.created_at,
+        templateId: savedTemplate.id,
+        originalLatex: savedTemplate.original_latex,
+        extractedJson: savedJson,
+        latexTemplate: savedTemplate.created_latex_template,
+        savedAt: savedTemplate.updated_at || savedTemplate.created_at,
       },
     });
   } catch (error) {
