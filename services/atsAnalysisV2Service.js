@@ -7,7 +7,7 @@
  * 3. Identifying optimization opportunities
  */
 
-const Anthropic = require('@anthropic-ai/sdk');
+import Anthropic from '@anthropic-ai/sdk';
 
 /**
  * Analyze resume against job description
@@ -337,7 +337,7 @@ function getSectionKeyFromName(sectionName) {
   return nameToKeyMap[sectionName] || sectionName.toLowerCase().replace(/\s+/g, '_');
 }
 
-module.exports = {
+export {
   analyzeResumeWithLLM,
   validateAnalysis,
   calculateSectionMatchPercentage,

@@ -7,8 +7,8 @@
  * 3. Validating Handlebars templates
  */
 
-const Anthropic = require('@anthropic-ai/sdk');
-const { validateResumeContent } = require('../schemas/resumeContentSchema');
+import Anthropic from '@anthropic-ai/sdk';
+import { validateResumeContent } from '../schemas/resumeContentSchema.js';
 
 /**
  * Extract JSON content from LaTeX resume
@@ -452,7 +452,7 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-module.exports = {
+export {
   extractJsonFromLatex,
   convertLatexToTemplate,
   validateTemplate

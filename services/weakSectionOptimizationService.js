@@ -8,8 +8,8 @@
  * 4. Iteration-aware prompts for smarter optimization
  */
 
-const Anthropic = require('@anthropic-ai/sdk');
-const { getNestedValue, setNestedValue } = require('../schemas/resumeContentSchema');
+import Anthropic from '@anthropic-ai/sdk';
+import { getNestedValue, setNestedValue } from '../schemas/resumeContentSchema.js';
 
 /**
  * Optimize weak sections identified by ATS analysis
@@ -343,7 +343,7 @@ function countKeywordsInSection(sectionText, keywords) {
   };
 }
 
-module.exports = {
+export {
   optimizeWeakSectionsV2,
   getOptimizationSystemPrompt,
   createOptimizationPrompt,

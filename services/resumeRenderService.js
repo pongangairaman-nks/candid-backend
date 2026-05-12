@@ -6,7 +6,7 @@
  * 2. Validating rendered LaTeX for completeness and structure
  */
 
-const Handlebars = require('handlebars');
+import Handlebars from 'handlebars';
 
 /**
  * Render LaTeX from Handlebars template + JSON content
@@ -312,7 +312,7 @@ function getLatexStats(latex) {
   };
 }
 
-module.exports = {
+export {
   renderLatex,
   validateLatex,
   checkBraceBalance,

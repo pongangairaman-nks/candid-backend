@@ -4,16 +4,17 @@
  * Endpoints for retrieving LLM usage statistics and costs
  */
 
-const express = require('express');
-const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
-const {
+import express from 'express';
+import { authenticateToken } from '../middleware/auth.js';
+import {
   getUserUsageStats,
   getUsageByPhase,
   getUsageByModel,
   getTotalCost,
   getRecentUsage
-} = require('../services/tokenTrackingService');
+} from '../services/tokenTrackingService.js';
+
+const router = express.Router();
 
 /**
  * GET /api/v2/usage/stats
@@ -185,4 +186,4 @@ router.get('/recent', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

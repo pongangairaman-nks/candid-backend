@@ -329,7 +329,7 @@ function setNestedValue(content, path, value) {
   obj[lastKey] = value;
 }
 
-module.exports = {
+export {
   resumeContentSchema,
   exampleResumeContent,
   validateResumeContent,

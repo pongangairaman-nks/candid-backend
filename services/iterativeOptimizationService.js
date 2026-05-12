@@ -8,8 +8,8 @@
  * 4. Tracking optimization history
  */
 
-const { analyzeResumeWithLLM } = require('./atsAnalysisV2Service');
-const { optimizeWeakSectionsV2 } = require('./weakSectionOptimizationService');
+import { analyzeResumeWithLLM } from './atsAnalysisV2Service.js';
+import { optimizeWeakSectionsV2 } from './weakSectionOptimizationService.js';
 
 /**
  * Iteratively optimize resume until target score is reached
@@ -208,7 +208,7 @@ function getOptimizationSummary(result) {
   };
 }
 
-module.exports = {
+export {
   optimizeUntilTarget,
   getOptimizationSummary
 };

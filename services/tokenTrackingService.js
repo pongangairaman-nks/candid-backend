@@ -8,7 +8,7 @@
  * 4. Providing usage insights
  */
 
-const pool = require('../db');
+import pool from '../config/database.js';
 
 /**
  * Model pricing (per 1M tokens)
@@ -366,7 +366,7 @@ async function getRecentUsage(userId, limit = 10) {
   }
 }
 
-module.exports = {
+export {
   logTokenUsage,
   calculateCost,
   getUserUsageStats,

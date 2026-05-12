@@ -8,16 +8,17 @@
  * - POST /api/v2/resume/optimize-to-target - Iteratively optimize resume
  */
 
-const express = require('express');
+import express from 'express';
+import pool from '../config/database.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { extractJsonFromLatex, convertLatexToTemplate } from '../services/resumeParserService.js';
+import { renderLatex, validateLatex } from '../services/resumeRenderService.js';
+import { analyzeResumeWithLLM } from '../services/atsAnalysisV2Service.js';
+import { optimizeUntilTarget } from '../services/iterativeOptimizationService.js';
+import { getUserLLMConfig } from './llmConfig.js';
+import { logTokenUsage } from '../services/tokenTrackingService.js';
+
 const router = express.Router();
-const pool = require('../db');
-const { authenticateToken } = require('../middleware/auth');
-const { extractJsonFromLatex, convertLatexToTemplate } = require('../services/resumeParserService');
-const { renderLatex, validateLatex } = require('../services/resumeRenderService');
-const { analyzeResumeWithLLM } = require('../services/atsAnalysisV2Service');
-const { optimizeUntilTarget } = require('../services/iterativeOptimizationService');
-const { getUserLLMConfig } = require('../services/llmConfigService');
-const { logTokenUsage } = require('../services/tokenTrackingService');
 
 /**
  * POST /api/v2/resume/upload-master
@@ -395,4 +396,4 @@ router.post('/optimize-to-target', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
