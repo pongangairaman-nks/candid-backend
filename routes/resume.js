@@ -453,6 +453,7 @@ router.post(
         jobDescription,
         prompt,
         masterProfile,
+        extractedContentJson,
         resume,
         quality = "high",
         mode = "global",
@@ -463,11 +464,11 @@ router.post(
         confidence,
       } = req.body;
 
-      // Validate input
-      if (!resume || !resume.trim()) {
+      // Validate input - prefer extractedContentJson over resume
+      if (!extractedContentJson && !resume) {
         return res.status(400).json({
           status: "error",
-          message: "Resume text is required",
+          message: "Either extractedContentJson or resume text is required",
         });
       }
 
@@ -572,6 +573,49 @@ ${optimizationGuidelines}`
         } else if (typeof masterProfile === "string") {
           masterProfileLatex = masterProfile;
         }
+      }
+
+      // Handle JSON optimization if extractedContentJson is provided
+      if (extractedContentJson) {
+        console.log('📊 Optimizing extracted JSON against job description...');
+        
+        // Use the iterative optimization service to optimize the JSON
+        const { optimizeUntilTarget } = await import('../services/iterativeOptimizationService.js');
+        
+        const optimizationResult = await optimizeUntilTarget(
+          extractedContentJson,
+          jobDescription,
+          userConfig,
+          85, // target score - must reach 85+
+        );
+
+        logger.info(`✅ JSON optimization complete (Score: ${optimizationResult.final_ats_score}/100)`);
+
+        // Save optimized JSON to database for this resume
+        try {
+          await pool.query(
+            `UPDATE resumes 
+             SET extracted_content_json = $1, updated_at = NOW()
+             WHERE user_id = $2`,
+            [JSON.stringify(optimizationResult.optimized_content_json), userId]
+          );
+          console.log('💾 Optimized JSON saved to database');
+        } catch (dbError) {
+          console.warn('⚠️ Failed to save optimized JSON to database:', dbError.message);
+        }
+
+        res.status(200).json({
+          status: "success",
+          message: "Resume optimization successful",
+          data: {
+            optimizedJson: optimizationResult.optimized_content_json,
+            atsScore: optimizationResult.final_ats_score,
+            iterations: optimizationResult.iterations,
+            targetReached: optimizationResult.target_reached,
+            latencyMs: Date.now() - startTime,
+          },
+        });
+        return;
       }
 
       let fullLatex = resume;

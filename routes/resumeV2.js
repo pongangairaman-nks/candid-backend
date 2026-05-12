@@ -202,7 +202,7 @@ router.post('/render', authenticateToken, async (req, res) => {
 router.post('/analyze', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { jobDescription, extractedContentJson } = req.body;
+    const { jobDescription, extractedContentJson, userPrompt } = req.body;
 
     if (!jobDescription || !extractedContentJson) {
       return res.status(400).json({
@@ -215,22 +215,40 @@ router.post('/analyze', authenticateToken, async (req, res) => {
     console.log(`🔍 Analyzing resume for user ${userId}`);
     console.log(`${'='.repeat(60)}\n`);
 
-    // Get user's analyzer config
-    const userConfig = await getUserLLMConfig(userId, 'analyzer');
+    // Get user's analyzer config or fallback to environment variables
+    let userConfig = await getUserLLMConfig(userId, 'analyzer');
     if (!userConfig) {
+      console.log(`⚠️ No user analyzer config found, using environment defaults`);
+      userConfig = {
+        provider: process.env.LLM_PROVIDER || 'claude',
+        model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest',
+        apiKey: process.env.CLAUDE_API_KEY,
+      };
+    }
+
+    if (!userConfig.apiKey) {
       return res.status(400).json({
         status: 'error',
-        message: 'Please configure LLM settings first'
+        message: 'LLM API key not configured. Please set up LLM settings or configure environment variables.'
       });
     }
 
     // Analyze resume with LLM
     console.log('📊 Running ATS analysis...');
-    const atsAnalysis = await analyzeResumeWithLLM(
-      jobDescription,
-      extractedContentJson,
-      userConfig
-    );
+    console.log(`   Using model: ${userConfig.model}`);
+    console.log(`   Provider: ${userConfig.provider}`);
+    
+    let atsAnalysis;
+    try {
+      atsAnalysis = await analyzeResumeWithLLM(
+        jobDescription,
+        extractedContentJson,
+        userConfig
+      );
+    } catch (analysisError) {
+      console.error('❌ LLM Analysis failed:', analysisError.message);
+      throw analysisError;
+    }
 
     // Log token usage (estimate: ~1000 input, ~500 output for analysis)
     try {
@@ -266,11 +284,14 @@ router.post('/analyze', authenticateToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Analysis error:', error.message);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Analysis error:', errorMessage);
+    console.error('Full error:', error);
+    
     res.status(500).json({
       status: 'error',
       message: 'Failed to analyze resume',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
 });
