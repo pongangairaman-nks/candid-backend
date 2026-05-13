@@ -127,7 +127,8 @@ INSTRUCTIONS:
 
 Return ONLY the updated LaTeX document. No explanations, no markdown, no code blocks - just the raw LaTeX content.`;
 
-    const model = userConfig.model || 'claude-opus-4-1-20250805';
+    const model = userConfig.model || process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest';
+    console.log(`🤖 Using Claude model: ${model}`);
     const client = new Anthropic({ apiKey: userConfig.apiKey });
 
     const message = await client.messages.create({
@@ -231,7 +232,7 @@ export const analyzeJobDescription = async (jobDescription, resumeText, userConf
             throw new Error('Claude API key not configured. Please configure your LLM settings in the Configuration page.');
         }
 
-        const model = userConfig.model || 'claude-3-5-sonnet-latest';
+        const model = userConfig.model || process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest';
         
         // Validate model is a non-empty string (actual validation happens when API is called)
         if (!model || typeof model !== 'string') {
@@ -450,8 +451,9 @@ ${selectedText}
 Please optimize this section to better match the job description while preserving all LaTeX formatting.`;
 
     try {
+        const model = userConfig.model || process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest';
         const response = await client.messages.create({
-            model: userConfig.model || 'claude-opus-4-1-20250805',
+            model: model,
             max_tokens: 8000,
             system: systemPrompt,
             messages: [

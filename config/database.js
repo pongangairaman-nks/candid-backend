@@ -68,6 +68,12 @@ export const initDatabase = async () => {
         ats_analysis JSONB,
         resume_chunks JSONB,
         jd_summary TEXT,
+        whole_master_template TEXT,
+        extracted_content_json JSONB,
+        created_latex_template TEXT,
+        optimized_content_json JSONB,
+        final_latex TEXT,
+        template_version VARCHAR(10) DEFAULT '1.0',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

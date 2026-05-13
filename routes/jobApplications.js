@@ -148,6 +148,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Job application not found' });
     }
 
+    const now = new Date().toISOString();
     const result = await pool.query(
       `UPDATE job_applications SET
         position = COALESCE($1, position),
@@ -167,7 +168,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         generated_cover_letter_latex = COALESCE($15, generated_cover_letter_latex),
         resume_prompt = COALESCE($16, resume_prompt),
         cover_letter_prompt = COALESCE($17, cover_letter_prompt),
-        updated_at = CURRENT_TIMESTAMP
+        updated_at = $20
        WHERE id = $18 AND user_id = $19
        RETURNING *`,
       [
@@ -190,6 +191,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         data.coverLetterPrompt,
         id,
         user_id,
+        now,
       ]
     );
 
@@ -233,12 +235,13 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Status is required' });
     }
 
+    const now = new Date().toISOString();
     const result = await pool.query(
       `UPDATE job_applications 
-       SET status = $1, updated_at = CURRENT_TIMESTAMP
+       SET status = $1, updated_at = $4
        WHERE id = $2 AND user_id = $3
        RETURNING *`,
-      [status, id, user_id]
+      [status, id, user_id, now]
     );
 
     if (!result.rows?.length) {

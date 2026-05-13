@@ -11,7 +11,7 @@ const CHEAP_DEFAULTS = {
 
 // Strong models for generation and mapping
 const STRONG_DEFAULTS = {
-  claude: 'claude-3-5-sonnet-latest',
+  claude: 'claude-opus-4-1-20250805',
   openai: 'gpt-4o',
   gemini: 'gemini-2.5-pro',
 };
@@ -78,14 +78,17 @@ export const getTieredLLMConfig = async (user_id, configType, task) => {
       tier = 'cheap';
     }
 
-    // Override with strong if tier is cheap but user wants strong
+    // Determine final model based on tier and user config
+    // For strong tasks, use strong default if user's model is weak (Haiku/Mini)
     let finalModel = baseModel;
-    if (tier === 'cheap' && !baseModel?.includes('haiku') && !baseModel?.includes('mini') && !baseModel?.includes('flash')) {
-      // User selected a strong model but task suggests cheap - use cheap defaults
-      finalModel = CHEAP_DEFAULTS[baseProvider];
-    } else if (tier === 'strong' && (baseModel?.includes('haiku') || baseModel?.includes('mini') || baseModel?.includes('flash'))) {
-      // User selected cheap model but task needs strong - use strong defaults
-      finalModel = STRONG_DEFAULTS[baseProvider];
+    
+    const isWeakModel = baseModel?.includes('haiku') || baseModel?.includes('mini') || baseModel?.includes('flash');
+    const isStrongTask = tier === 'strong';
+    
+    if (isStrongTask && isWeakModel) {
+      // Use strong default for strong tasks with weak models
+      finalModel = STRONG_DEFAULTS[baseProvider] || baseModel;
+      console.log(`⚠️ Upgrading model for strong task: ${baseModel} → ${finalModel}`);
     }
 
     return {
