@@ -621,8 +621,11 @@ ${optimizationGuidelines}`
           });
         }
         
-        // Always optimize if score is between 50-85 (or if already provided as 85+, still optimize to ensure)
-        console.log(`📊 Optimizing resume (current score: ${atsScore}/100)...`);
+        // Optimize based on current score
+        // If score >= 85: run 1 iteration only
+        // If score < 85: run up to 3 iterations to reach 85+
+        const maxIterations = atsScore >= 85 ? 1 : 3;
+        console.log(`📊 Optimizing resume (current score: ${atsScore}/100, max iterations: ${maxIterations})...`);
         const { optimizeUntilTarget } = await import('../services/iterativeOptimizationService.js');
         
         const optimizationResult = await optimizeUntilTarget(
@@ -630,6 +633,7 @@ ${optimizationGuidelines}`
           jobDescription,
           userConfig,
           85, // target score - must reach 85+
+          maxIterations, // dynamic max iterations based on current score
         );
         
         // Check if optimization reached target

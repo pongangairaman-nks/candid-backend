@@ -8,7 +8,7 @@
  * 4. Tracking optimization history
  */
 
-import { analyzeResumeWithLLM } from './atsAnalysisV2Service.js';
+import { analyzeResumeWithDiagnostic } from './atsAnalysisCombinedService.js';
 import { optimizeWeakSectionsV2 } from './weakSectionOptimizationService.js';
 
 /**
@@ -65,7 +65,7 @@ async function optimizeUntilTarget(
     console.log(`  1️⃣ Analyzing resume...`);
     let atsAnalysis;
     try {
-      atsAnalysis = await analyzeResumeWithLLM(
+      atsAnalysis = await analyzeResumeWithDiagnostic(
         jobDescription,
         currentContent,
         userConfig
@@ -99,15 +99,24 @@ async function optimizeUntilTarget(
       };
     }
 
-    // Step 3: Check for plateau (score not improving)
-    if (iteration > 1) {
-      const previousScore = optimizationHistory[iteration - 2].score;
-      const improvement = currentScore - previousScore;
+    // Step 3: Check for plateau (score not improving) - use trend analysis to avoid LLM variance
+    if (iteration >= 3) {
+      // Get last 2 scores for trend analysis
+      const score2 = optimizationHistory[iteration - 2].score;  // 2 iterations ago
+      const score1 = optimizationHistory[iteration - 1].score;  // 1 iteration ago
+      const score0 = currentScore;                               // current
+      
+      // Calculate average improvement over last 2 iterations
+      const improvement1 = score1 - score2;
+      const improvement2 = score0 - score1;
+      const avgImprovement = (improvement1 + improvement2) / 2;
+      
+      console.log(`  📊 Score trend: ${score2} → ${score1} → ${score0}`);
+      console.log(`  📊 Improvements: +${improvement1}, +${improvement2} (avg: +${avgImprovement.toFixed(1)})`);
 
-      console.log(`  📊 Improvement from last iteration: ${improvement}%`);
-
-      if (improvement < 2) {
-        console.log(`\n⚠️ Score plateau detected (improvement: ${improvement}%). Stopping optimization.`);
+      // Only stop if trend shows plateau (avg improvement < 1 point over last 2 iterations)
+      if (avgImprovement < 1) {
+        console.log(`\n⚠️ Score plateau detected (avg improvement: ${avgImprovement.toFixed(1)} points). Stopping optimization.`);
         console.log(`${'='.repeat(60)}\n`);
         return {
           optimized_content_json: currentContent,

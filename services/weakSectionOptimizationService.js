@@ -9,6 +9,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { getNestedValue, setNestedValue } from '../schemas/resumeContentSchema.js';
 
 /**
@@ -45,10 +46,11 @@ async function optimizeWeakSectionsV2(
     throw new Error('User LLM config is required');
   }
 
-  const client = new Anthropic({ apiKey: userConfig.apiKey });
-  const model = userConfig.model || 'claude-opus-4-1-20250805';
+  const provider = userConfig.provider || 'openai';
+  const model = userConfig.model || 'gpt-4o-mini';
   
   console.log(`\n    Using model: ${model}`);
+  console.log(`    Provider: ${provider}`);
 
   // Deep copy to avoid mutating original
   const optimizedContent = JSON.parse(JSON.stringify(contentJson));
@@ -93,20 +95,45 @@ async function optimizeWeakSectionsV2(
         iteration
       );
 
-      // Call Claude to optimize
-      const response = await client.messages.create({
-        model,
-        max_tokens: 2000,
-        system: getOptimizationSystemPrompt(),
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      });
-
-      const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+      // Call LLM to optimize (Claude or OpenAI)
+      let responseText = '';
+      
+      if (provider === 'claude') {
+        const client = new Anthropic({ apiKey: userConfig.apiKey });
+        const response = await client.messages.create({
+          model,
+          max_tokens: 2000,
+          temperature: 0,  // Deterministic responses for consistent optimization
+          system: getOptimizationSystemPrompt(),
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ]
+        });
+        responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+      } else if (provider === 'openai') {
+        const client = new OpenAI({ apiKey: userConfig.apiKey });
+        const response = await client.chat.completions.create({
+          model,
+          max_tokens: 2000,
+          temperature: 0,  // Deterministic responses for consistent optimization
+          messages: [
+            {
+              role: 'system',
+              content: getOptimizationSystemPrompt()
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ]
+        });
+        responseText = response.choices[0].message.content || '';
+      } else {
+        throw new Error(`Unsupported provider: ${provider}`);
+      }
 
       if (!responseText) {
         console.warn(`    ⚠️ Empty response for ${weakSection.section_name}`);

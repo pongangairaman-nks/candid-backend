@@ -44,6 +44,7 @@ const MODEL_PRICING = {
  * @param {string} params.model - Model name
  * @param {number} params.inputTokens - Input tokens used
  * @param {number} params.outputTokens - Output tokens used
+ * @param {string} params.endpoint - API endpoint (optional)
  * @returns {Promise<Object>} - Logged usage record
  */
 async function logTokenUsage({
@@ -51,7 +52,8 @@ async function logTokenUsage({
   phase,
   model,
   inputTokens,
-  outputTokens
+  outputTokens,
+  endpoint = 'unknown'
 }) {
   if (!userId) {
     throw new Error('userId is required');
@@ -73,26 +75,50 @@ async function logTokenUsage({
     // Calculate cost
     const costUsd = calculateCost(model, inputTokens, outputTokens);
 
-    // Log to database
-    const result = await pool.query(
-      `INSERT INTO llm_usage_logs (user_id, phase, model, input_tokens, output_tokens, cost_usd, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING id, user_id, phase, model, input_tokens, output_tokens, cost_usd, created_at`,
-      [userId, phase, model, inputTokens, outputTokens, costUsd]
-    );
+    // Try to log to database with cost_usd column
+    try {
+      const result = await pool.query(
+        `INSERT INTO llm_usage_logs (user_id, phase, model, input_tokens, output_tokens, cost_usd, endpoint, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         RETURNING id, user_id, phase, model, input_tokens, output_tokens, cost_usd, endpoint, created_at`,
+        [userId, phase, model, inputTokens, outputTokens, costUsd, endpoint]
+      );
 
-    const logRecord = result.rows[0];
+      const logRecord = result.rows[0];
 
-    console.log(`📊 Token usage logged:`);
-    console.log(`   Phase: ${phase}`);
-    console.log(`   Model: ${model}`);
-    console.log(`   Tokens: ${inputTokens} input + ${outputTokens} output = ${inputTokens + outputTokens} total`);
-    console.log(`   Cost: $${costUsd.toFixed(6)}`);
+      console.log(`📊 Token usage logged:`);
+      console.log(`   Phase: ${phase}`);
+      console.log(`   Model: ${model}`);
+      console.log(`   Tokens: ${inputTokens} input + ${outputTokens} output = ${inputTokens + outputTokens} total`);
+      console.log(`   Cost: $${costUsd.toFixed(6)}`);
 
-    return logRecord;
+      return logRecord;
+    } catch (dbError) {
+      // If cost_usd column doesn't exist, try without it
+      if (dbError.message.includes('cost_usd') || dbError.message.includes('column')) {
+        console.warn(`⚠️ cost_usd column not found, logging without cost...`);
+        const result = await pool.query(
+          `INSERT INTO llm_usage_logs (user_id, phase, model, input_tokens, output_tokens, endpoint, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())
+           RETURNING id, user_id, phase, model, input_tokens, output_tokens, endpoint, created_at`,
+          [userId, phase, model, inputTokens, outputTokens, endpoint]
+        );
+
+        const logRecord = result.rows[0];
+
+        console.log(`📊 Token usage logged (without cost):`);
+        console.log(`   Phase: ${phase}`);
+        console.log(`   Model: ${model}`);
+        console.log(`   Tokens: ${inputTokens} input + ${outputTokens} output = ${inputTokens + outputTokens} total`);
+
+        return logRecord;
+      }
+      throw dbError;
+    }
   } catch (error) {
-    console.error('❌ Failed to log token usage:', error.message);
-    throw error;
+    console.warn('⚠️ Failed to log token usage:', error.message);
+    // Don't throw - token logging is non-critical
+    return null;
   }
 }
 
@@ -143,10 +169,8 @@ async function getUserUsageStats(userId, options = {}) {
         SUM(input_tokens) as total_input_tokens,
         SUM(output_tokens) as total_output_tokens,
         SUM(input_tokens + output_tokens) as total_tokens,
-        SUM(cost_usd) as total_cost_usd,
         AVG(input_tokens) as avg_input_tokens,
         AVG(output_tokens) as avg_output_tokens,
-        AVG(cost_usd) as avg_cost_usd,
         MIN(created_at) as first_call,
         MAX(created_at) as last_call
       FROM llm_usage_logs
@@ -176,7 +200,7 @@ async function getUserUsageStats(userId, options = {}) {
       paramIndex++;
     }
 
-    query += ` GROUP BY phase, model ORDER BY total_cost_usd DESC`;
+    query += ` GROUP BY phase, model ORDER BY call_count DESC`;
 
     const result = await pool.query(query, params);
 
@@ -186,8 +210,7 @@ async function getUserUsageStats(userId, options = {}) {
       total_calls: stats.reduce((sum, row) => sum + parseInt(row.call_count), 0),
       total_input_tokens: stats.reduce((sum, row) => sum + (parseInt(row.total_input_tokens) || 0), 0),
       total_output_tokens: stats.reduce((sum, row) => sum + (parseInt(row.total_output_tokens) || 0), 0),
-      total_tokens: stats.reduce((sum, row) => sum + (parseInt(row.total_tokens) || 0), 0),
-      total_cost_usd: stats.reduce((sum, row) => sum + (parseFloat(row.total_cost_usd) || 0), 0)
+      total_tokens: stats.reduce((sum, row) => sum + (parseInt(row.total_tokens) || 0), 0)
     };
 
     return {
@@ -204,10 +227,8 @@ async function getUserUsageStats(userId, options = {}) {
         total_input_tokens: parseInt(row.total_input_tokens) || 0,
         total_output_tokens: parseInt(row.total_output_tokens) || 0,
         total_tokens: parseInt(row.total_tokens) || 0,
-        total_cost_usd: parseFloat(row.total_cost_usd) || 0,
         avg_input_tokens: Math.round(parseFloat(row.avg_input_tokens) || 0),
         avg_output_tokens: Math.round(parseFloat(row.avg_output_tokens) || 0),
-        avg_cost_usd: parseFloat(row.avg_cost_usd) || 0,
         first_call: row.first_call,
         last_call: row.last_call
       }))
@@ -235,12 +256,11 @@ async function getUsageByPhase(userId) {
         phase,
         COUNT(*) as call_count,
         SUM(input_tokens) as total_input_tokens,
-        SUM(output_tokens) as total_output_tokens,
-        SUM(cost_usd) as total_cost_usd
+        SUM(output_tokens) as total_output_tokens
       FROM llm_usage_logs
       WHERE user_id = $1
       GROUP BY phase
-      ORDER BY total_cost_usd DESC`,
+      ORDER BY call_count DESC`,
       [userId]
     );
 
@@ -248,8 +268,7 @@ async function getUsageByPhase(userId) {
       phase: row.phase,
       call_count: parseInt(row.call_count),
       total_input_tokens: parseInt(row.total_input_tokens) || 0,
-      total_output_tokens: parseInt(row.total_output_tokens) || 0,
-      total_cost_usd: parseFloat(row.total_cost_usd) || 0
+      total_output_tokens: parseInt(row.total_output_tokens) || 0
     }));
   } catch (error) {
     console.error('❌ Failed to get usage by phase:', error.message);
@@ -274,12 +293,11 @@ async function getUsageByModel(userId) {
         model,
         COUNT(*) as call_count,
         SUM(input_tokens) as total_input_tokens,
-        SUM(output_tokens) as total_output_tokens,
-        SUM(cost_usd) as total_cost_usd
+        SUM(output_tokens) as total_output_tokens
       FROM llm_usage_logs
       WHERE user_id = $1
       GROUP BY model
-      ORDER BY total_cost_usd DESC`,
+      ORDER BY call_count DESC`,
       [userId]
     );
 
@@ -287,8 +305,7 @@ async function getUsageByModel(userId) {
       model: row.model,
       call_count: parseInt(row.call_count),
       total_input_tokens: parseInt(row.total_input_tokens) || 0,
-      total_output_tokens: parseInt(row.total_output_tokens) || 0,
-      total_cost_usd: parseFloat(row.total_cost_usd) || 0
+      total_output_tokens: parseInt(row.total_output_tokens) || 0
     }));
   } catch (error) {
     console.error('❌ Failed to get usage by model:', error.message);
@@ -308,12 +325,22 @@ async function getTotalCost(userId) {
   }
 
   try {
+    // Since cost_usd column may not exist, we calculate cost from token usage
     const result = await pool.query(
-      `SELECT SUM(cost_usd) as total_cost FROM llm_usage_logs WHERE user_id = $1`,
+      `SELECT 
+        SUM(input_tokens) as total_input_tokens,
+        SUM(output_tokens) as total_output_tokens
+       FROM llm_usage_logs 
+       WHERE user_id = $1`,
       [userId]
     );
 
-    return parseFloat(result.rows[0].total_cost) || 0;
+    const row = result.rows[0];
+    const inputTokens = parseInt(row.total_input_tokens) || 0;
+    const outputTokens = parseInt(row.total_output_tokens) || 0;
+    
+    // Calculate cost from tokens (this is an estimate)
+    return calculateCost('gpt-4o-mini', inputTokens, outputTokens);
   } catch (error) {
     console.error('❌ Failed to get total cost:', error.message);
     throw error;
@@ -341,7 +368,6 @@ async function getRecentUsage(userId, limit = 10) {
         input_tokens,
         output_tokens,
         input_tokens + output_tokens as total_tokens,
-        cost_usd,
         created_at
       FROM llm_usage_logs
       WHERE user_id = $1
@@ -357,7 +383,6 @@ async function getRecentUsage(userId, limit = 10) {
       input_tokens: parseInt(row.input_tokens),
       output_tokens: parseInt(row.output_tokens),
       total_tokens: parseInt(row.total_tokens),
-      cost_usd: parseFloat(row.cost_usd),
       created_at: row.created_at
     }));
   } catch (error) {
