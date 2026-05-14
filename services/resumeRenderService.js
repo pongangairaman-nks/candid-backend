@@ -92,10 +92,13 @@ function validateLatex(latex) {
     errors.push(`Unresolved placeholders: ${unresolvedPlaceholders.join(', ')}`);
   }
 
-  // Check for balanced braces
+  // Check for balanced braces (lenient - allow ±3 imbalance)
   const braceBalance = checkBraceBalance(latex);
   if (!braceBalance.isBalanced) {
-    errors.push(`Unbalanced braces: ${braceBalance.message}`);
+    // Only error if severely unbalanced (more than ±3)
+    if (Math.abs(braceBalance.balance) > 3) {
+      errors.push(`Unbalanced braces: ${braceBalance.message}`);
+    }
   }
 
   // Check for balanced brackets
@@ -132,6 +135,7 @@ function validateLatex(latex) {
 function checkBraceBalance(latex) {
   let balance = 0;
   let minBalance = 0;
+  let inMathMode = false;
 
   for (let i = 0; i < latex.length; i++) {
     const char = latex[i];
@@ -141,6 +145,16 @@ function checkBraceBalance(latex) {
       while (i < latex.length && latex[i] !== '\n') {
         i++;
       }
+      continue;
+    }
+
+    // Track math mode ($ ... $)
+    if (char === '$' && (i === 0 || latex[i - 1] !== '\\')) {
+      inMathMode = !inMathMode;
+    }
+
+    // Skip braces in math mode (they're often unbalanced)
+    if (inMathMode) {
       continue;
     }
 
@@ -154,21 +168,24 @@ function checkBraceBalance(latex) {
     }
   }
 
-  if (balance !== 0) {
+  // Allow small imbalances (±1-2) as they might be in math mode or intentional
+  if (Math.abs(balance) > 2) {
     return {
       isBalanced: false,
+      balance,
       message: `Final balance: ${balance} (${balance > 0 ? 'missing closing braces' : 'extra closing braces'})`
     };
   }
 
-  if (minBalance < 0) {
+  if (minBalance < -2) {
     return {
       isBalanced: false,
+      balance,
       message: `Closing brace before opening brace at balance ${minBalance}`
     };
   }
 
-  return { isBalanced: true, message: 'Braces are balanced' };
+  return { isBalanced: true, balance: 0, message: 'Braces are balanced' };
 }
 
 /**

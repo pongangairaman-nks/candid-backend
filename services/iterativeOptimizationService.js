@@ -8,7 +8,7 @@
  * 4. Tracking optimization history
  */
 
-import { analyzeResumeWithLLM } from './atsAnalysisV2Service.js';
+import { analyzeResumeWithDiagnostic } from './atsAnalysisCombinedService.js';
 import { optimizeWeakSectionsV2 } from './weakSectionOptimizationService.js';
 
 /**
@@ -65,7 +65,7 @@ async function optimizeUntilTarget(
     console.log(`  1️⃣ Analyzing resume...`);
     let atsAnalysis;
     try {
-      atsAnalysis = await analyzeResumeWithLLM(
+      atsAnalysis = await analyzeResumeWithDiagnostic(
         jobDescription,
         currentContent,
         userConfig
