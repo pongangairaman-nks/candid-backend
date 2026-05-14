@@ -233,31 +233,32 @@ router.post('/analyze', authenticateToken, async (req, res) => {
       });
     }
 
-    // Analyze resume with LLM
-    console.log('📊 Running ATS analysis...');
+    // Analyze resume with combined ATS + Diagnostic service (single LLM call)
+    console.log('📊 Running combined ATS analysis + diagnostic...');
     console.log(`   Using model: ${userConfig.model}`);
     console.log(`   Provider: ${userConfig.provider}`);
     
     let atsAnalysis;
     try {
-      atsAnalysis = await analyzeResumeWithLLM(
+      const { analyzeResumeWithDiagnostic } = await import('../services/atsAnalysisCombinedService.js');
+      atsAnalysis = await analyzeResumeWithDiagnostic(
         jobDescription,
         extractedContentJson,
         userConfig
       );
     } catch (analysisError) {
-      console.error('❌ LLM Analysis failed:', analysisError.message);
+      console.error('❌ Combined analysis failed:', analysisError.message);
       throw analysisError;
     }
 
-    // Log token usage (estimate: ~1000 input, ~500 output for analysis)
+    // Log token usage (estimate: ~1500 input, ~800 output for combined analysis)
     try {
       await logTokenUsage({
         userId,
         phase: 'analysis',
         model: userConfig.model,
-        inputTokens: 1000,
-        outputTokens: 500
+        inputTokens: 1500,
+        outputTokens: 800
       });
     } catch (logError) {
       console.warn('⚠️ Failed to log token usage:', logError.message);
@@ -271,7 +272,7 @@ router.post('/analyze', authenticateToken, async (req, res) => {
       [JSON.stringify(atsAnalysis), userId]
     );
 
-    console.log(`✅ Analysis complete (Score: ${atsAnalysis.ats_score}/100)\n`);
+    console.log(`✅ Analysis complete (Score: ${atsAnalysis.ats_score}/100, Achievable: ${atsAnalysis.diagnostic?.achievable_score_without_new_experience || 'N/A'}/100)\n`);
 
     res.status(200).json({
       status: 'success',
@@ -280,7 +281,8 @@ router.post('/analyze', authenticateToken, async (req, res) => {
         analysis: atsAnalysis.analysis,
         weak_sections: atsAnalysis.weak_sections,
         missing_keywords: atsAnalysis.missing_keywords,
-        optimization_priority: atsAnalysis.optimization_priority
+        optimization_priority: atsAnalysis.optimization_priority,
+        diagnostic: atsAnalysis.diagnostic || null
       }
     });
   } catch (error) {

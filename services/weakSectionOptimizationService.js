@@ -97,6 +97,7 @@ async function optimizeWeakSectionsV2(
       const response = await client.messages.create({
         model,
         max_tokens: 2000,
+        temperature: 0,  // Deterministic responses for consistent optimization
         system: getOptimizationSystemPrompt(),
         messages: [
           {

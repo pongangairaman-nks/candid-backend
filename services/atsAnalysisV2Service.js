@@ -112,6 +112,7 @@ Return ONLY the JSON object, no markdown, no explanations.`;
       const response = await openaiClient.chat.completions.create({
         model,
         max_tokens: 4000,
+        temperature: 0,  // Deterministic responses for consistent analysis
         messages: [
           {
             role: 'system',
@@ -130,6 +131,7 @@ Return ONLY the JSON object, no markdown, no explanations.`;
       const response = await anthropicClient.messages.create({
         model,
         max_tokens: 4000,
+        temperature: 0,  // Deterministic responses for consistent analysis
         system: systemPrompt,
         messages: [
           {
