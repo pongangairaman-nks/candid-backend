@@ -99,14 +99,15 @@ async function optimizeUntilTarget(
       };
     }
 
-    // Step 3: Check for plateau (score not improving)
-    if (iteration > 1) {
+    // Step 3: Check for plateau (score not improving) - only if we're past iteration 2
+    if (iteration > 2) {
       const previousScore = optimizationHistory[iteration - 2].score;
       const improvement = currentScore - previousScore;
 
       console.log(`  📊 Improvement from last iteration: ${improvement}%`);
 
-      if (improvement < 2) {
+      // Only stop if score plateaued AND we've done at least 2 iterations
+      if (improvement < 2 && iteration >= 2) {
         console.log(`\n⚠️ Score plateau detected (improvement: ${improvement}%). Stopping optimization.`);
         console.log(`${'='.repeat(60)}\n`);
         return {

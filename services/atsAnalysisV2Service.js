@@ -8,6 +8,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 /**
  * Analyze resume against job description
@@ -15,7 +16,7 @@ import Anthropic from '@anthropic-ai/sdk';
  * 
  * @param {string} jobDescription - Raw job description text
  * @param {Object} resumeContentJson - Extracted resume content JSON
- * @param {Object} userConfig - User's LLM config { apiKey, model }
+ * @param {Object} userConfig - User's LLM config { apiKey, model, provider }
  * @returns {Promise<Object>} - ATS analysis with score, weak sections, missing keywords
  */
 async function analyzeResumeWithLLM(jobDescription, resumeContentJson, userConfig) {
@@ -31,8 +32,8 @@ async function analyzeResumeWithLLM(jobDescription, resumeContentJson, userConfi
     throw new Error('User LLM config is required');
   }
 
-  const client = new Anthropic({ apiKey: userConfig.apiKey });
-  const model = userConfig.model || 'claude-opus-4-1-20250805';
+  const provider = userConfig.provider || 'claude';
+  const model = userConfig.model || (provider === 'openai' ? 'gpt-4o-mini' : 'claude-opus-4-1-20250805');
 
   const systemPrompt = `You are an expert ATS (Applicant Tracking System) analyst and resume optimization specialist.
 
@@ -102,24 +103,46 @@ Provide a comprehensive ATS analysis with score, weak sections, and missing keyw
 Return ONLY the JSON object, no markdown, no explanations.`;
 
   try {
-    console.log('📊 Analyzing resume with LLM...');
+    console.log(`📊 Analyzing resume with LLM (Provider: ${provider}, Model: ${model})...`);
 
-    const response = await client.messages.create({
-      model,
-      max_tokens: 4000,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt
-        }
-      ]
-    });
+    let responseText = '';
 
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    if (provider === 'openai') {
+      const openaiClient = new OpenAI({ apiKey: userConfig.apiKey });
+      const response = await openaiClient.chat.completions.create({
+        model,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ]
+      });
+      responseText = response.choices[0].message.content || '';
+    } else {
+      // Default to Claude/Anthropic
+      const anthropicClient = new Anthropic({ apiKey: userConfig.apiKey });
+      const response = await anthropicClient.messages.create({
+        model,
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ]
+      });
+      responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    }
 
     if (!responseText) {
-      throw new Error('Empty response from Claude');
+      throw new Error(`Empty response from ${provider}`);
     }
 
     // Parse JSON response - strip markdown code blocks if present
@@ -133,12 +156,12 @@ Return ONLY the JSON object, no markdown, no explanations.`;
     try {
       analysis = JSON.parse(cleanedResponse);
     } catch (parseError) {
-      console.error('❌ Failed to parse Claude response as JSON');
+      console.error(`❌ Failed to parse ${provider} response as JSON`);
       console.error(`Response length: ${cleanedResponse.length}`);
       console.error(`Response preview (first 500 chars): ${cleanedResponse.substring(0, 500)}`);
       console.error(`Response preview (last 500 chars): ${cleanedResponse.substring(Math.max(0, cleanedResponse.length - 500))}`);
       console.error(`Parse error: ${parseError.message}`);
-      throw new Error(`Invalid JSON response from Claude: ${parseError.message}. Response may be incomplete or malformed.`);
+      throw new Error(`Invalid JSON response from ${provider}: ${parseError.message}. Response may be incomplete or malformed.`);
     }
 
     // Validate analysis structure
